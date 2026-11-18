@@ -36,7 +36,7 @@ docker run --rm public.ecr.aws/docker/library/node:22-bookworm-slim node --versi
 docker run --rm public.ecr.aws/docker/library/postgres:16-alpine postgres --version
 ```
 
-[Docker 官方说明](https://www.docker.com/blog/news-from-aws-reinvent-docker-official-images-on-amazon-ecr-public/)确认该发布渠道。三个标签的公开 manifest 已在本机网络检查为 HTTP 200，均有 Linux/amd64 平台；这不证明杭州构建环境可访问，需以上述真实命令结果为准。若仍失败，再评估将官方基础镜像同步至用户自己的 ACR。
+[Docker 官方说明](https://www.docker.com/blog/news-from-aws-reinvent-docker-official-images-on-amazon-ecr-public/)确认该发布渠道。三个标签的公开 manifest 已在本机网络检查为 HTTP 200，均有 Linux/amd64 平台；随后用户明确反馈在杭州执行上述命令后，Python、Node、PostgreSQL 版本均正常输出。镜像拉取和容器启动已通过，完整构建与发布尚待执行。若今后该渠道不可用，再评估将官方基础镜像同步至用户自己的 ACR。
 
 ### 原生制品与发布
 

@@ -4,6 +4,14 @@
 
 ### 2026-11-18 继续准备
 
+#### 杭州实际拉取三个官方镜像成功，可进入完整构建
+
+用户明确反馈在杭州集群执行 public.ecr.aws 的三条版本命令后，“Python、Node、PostgreSQL 版本均正常输出”。当前 Docker 服务、三个镜像的实际拉取与容器运行已获真实验收，先前 Docker Hub 超时仍保留为该仓库的历史，不再作为可用镜像来源的阻塞。
+
+完整构建下一步使用 PYTHON_BUILD_IMAGE/NODE_BUILD_IMAGE/POSTGRES_TEST_IMAGE 的 ECR 官方来源及 build-flow.sh，完成隔离控制检查、真实 PostgreSQL 16 回归、前端构建和原生制品打包。尚无该完整构建的运行结果，不能以版本输出代替。
+
+Git 同步连接排查：公开 GitHub API 和 smart HTTP 均返回 200，远程 main 仍为 5ef1a70；两份本机 Git 使用系统解析且保留 TLS 验证、禁用凭据助手的只读 ls-remote 均成功。同步助手已移除之前仅供网络排障的单次 DNS 覆盖，改用已验证的系统解析；未修改全局 Git/DNS 设置，也未关闭证书检查。后续正常快进推送和远程 SHA 核对仍以明确执行结果为准。
+
 #### 当前组织无香港集群，改验 Docker 官方 ECR Public 镜像
 
 用户确认没有中国香港集群选项，保留杭州。已查证 Docker 官方将 Official Images 发布到 Amazon ECR Public，本机对 docker/library/python:3.12-slim-bookworm、node:22-bookworm-slim、postgres:16-alpine 的公开 manifest 请求均为 200，并包含 Linux/amd64 平台。已请用户在 Flow 分别运行三个镜像的版本命令；尚待杭州实际拉取/运行结果，不以本机网络检查代替。
