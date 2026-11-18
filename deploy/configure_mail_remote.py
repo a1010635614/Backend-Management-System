@@ -42,7 +42,12 @@ def main():
     envpath=Path('/etc/vueblog.env')
     original=envpath.read_bytes()
     new_env=serialize_environment(original.decode(),updates).encode()
-    files={Path('/opt/vueblog/current/backend/app')/name:payload['files'][name].encode() for name in ('main.py','mailer.py')}
+    mainpath=Path('/opt/vueblog/current/backend/app/main.py')
+    if 'from app.mailer import send_message' not in mainpath.read_text():
+        raise SystemExit('Deploy the SSL-capable backend through its normal migration process first.')
+    main_owner=mainpath.stat()
+    # Do not partially deploy main.py here: later features may require database migrations.
+    files={Path('/opt/vueblog/current/backend/app/mailer.py'):payload['files']['mailer.py'].encode()}
     for path,content in files.items(): compile(content,str(path),'exec')
     # Verify TLS and SMTP authentication without sending email.
     try:
@@ -57,7 +62,7 @@ def main():
     snapshots[envpath]=(original,envpath.stat())
     try:
         for path,content in files.items():
-            owner=snapshots[path][1] if snapshots[path] else snapshots[Path('/opt/vueblog/current/backend/app/main.py')][1]
+            owner=snapshots[path][1] if snapshots[path] else main_owner
             replace_file(path,content,owner)
         replace_file(envpath,new_env,snapshots[envpath][1])
         subprocess.run(['systemctl','restart','vueblog'],check=True,capture_output=True)

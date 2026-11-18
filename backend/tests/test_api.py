@@ -61,7 +61,7 @@ class ApiTests(unittest.TestCase):
     def test_cos_native_presign_and_swagger(self):
         admin=self.token('admin@example.com')
         with patch.multiple(settings,cos_secret_id='test-id',cos_secret_key='test-key',cos_region='ap-shanghai',cos_bucket='test-1250000000',cos_public_base_url='https://media.example.com'):
-            result=self.client.post('/api/uploads/presign',params={'filename':'../../a.png','content_type':'image/png'},headers=admin)
+            result=self.client.post('/api/uploads/presign',json={'filename':'../../a.png','contentType':'image/png','size':123},headers=admin)
         self.assertEqual(result.status_code,200,result.text)
         data=result.json();url=urlparse(data['uploadUrl']);query=parse_qs(url.query)
         self.assertEqual(url.scheme,'https')
@@ -69,9 +69,52 @@ class ApiTests(unittest.TestCase):
         self.assertIn('q-signature',query)
         self.assertIn('content-type',query['q-header-list'][0])
         self.assertNotIn('..',data['key'])
-        self.assertTrue(data['publicUrl'].startswith('https://media.example.com/uploads/'))
+        self.assertIn('content-length',query['q-header-list'][0])
+        self.assertIn('id',data)
         schema=self.client.get('/openapi.json').json()
         self.assertEqual(schema['components']['securitySchemes']['HTTPBearer']['scheme'],'bearer')
+
+    def test_private_asset_upload_publish_and_read(self):
+        admin=self.token('admin@example.com')
+        with patch.multiple(settings,cos_secret_id='test-id',cos_secret_key='test-key',cos_region='ap-shanghai',cos_bucket='test-1250000000'),patch('app.main.CosS3Client.head_object',return_value={'Content-Length':'123','Content-Type':'image/png'}) as head:
+            started=self.client.post('/api/uploads/presign',json={'filename':'photo.png','contentType':'image/png','size':123},headers=admin)
+            self.assertEqual(started.status_code,200,started.text)
+            aid=started.json()['id']; marker='[[asset:'+aid+']]'
+            body={'title':'with attachment','summary':'summary','content':marker,'category':'notes'}
+            self.assertEqual(self.client.post('/api/posts',json=body,headers=admin).status_code,400)
+            self.assertEqual(self.client.get('/api/media/'+aid,follow_redirects=False).status_code,404)
+            complete=self.client.post('/api/uploads/'+aid+'/complete',headers=admin)
+            self.assertEqual(complete.status_code,200,complete.text)
+            self.assertEqual(self.client.post('/api/uploads/'+aid+'/complete',headers=admin).status_code,200)
+            head.assert_called_once()
+            self.assertEqual(self.client.get('/api/media/'+aid,follow_redirects=False).status_code,404)
+            created=self.client.post('/api/posts',json=body,headers=admin)
+            self.assertEqual(created.status_code,201,created.text)
+            pid=created.json()['id']
+            detail=self.client.get('/api/posts/'+str(pid)).json()
+            self.assertEqual(detail['attachments'][0]['filename'],'photo.png')
+            public=self.client.get('/api/media/'+aid,follow_redirects=False)
+            self.assertEqual(public.status_code,307)
+            self.assertIn('q-signature',parse_qs(urlparse(public.headers['location']).query))
+            self.assertIn('no-store',public.headers['cache-control'])
+            self.assertEqual(self.client.delete('/api/posts/'+str(pid),headers=admin).status_code,204)
+            self.assertEqual(self.client.get('/api/media/'+aid,follow_redirects=False).status_code,404)
+
+    def test_asset_metadata_and_owner_checks(self):
+        admin=self.token('admin@example.com')
+        with patch.multiple(settings,cos_secret_id='test-id',cos_secret_key='test-key',cos_bucket='test-1250000000'),patch('app.main.CosS3Client.head_object',return_value={'Content-Length':'999','Content-Type':'image/png'}):
+            started=self.client.post('/api/uploads/presign',json={'filename':'photo.png','contentType':'image/png','size':123},headers=admin)
+            self.assertEqual(started.status_code,200,started.text)
+            aid=started.json()['id']
+            with patch.dict(os.environ,{'ADMIN_EMAILS':'admin@example.com,second@example.com'}):
+                second=self.token('second@example.com')
+                self.assertEqual(self.client.post('/api/uploads/'+aid+'/complete',headers=second).status_code,404)
+            self.assertEqual(self.client.post('/api/uploads/'+aid+'/complete',headers=admin).status_code,400)
+            self.assertEqual(self.client.get('/api/media/'+aid,follow_redirects=False).status_code,404)
+            self.assertEqual(self.client.post('/api/uploads/'+aid+'/complete',headers=admin).status_code,400)
+        for size in (0,10*1024*1024+1):
+            self.assertEqual(self.client.post('/api/uploads/presign',json={'filename':'x.png','contentType':'image/png','size':size},headers=admin).status_code,422)
+        self.assertEqual(self.client.post('/api/uploads/presign',json={'filename':'x.svg','contentType':'image/svg+xml','size':10},headers=admin).status_code,400)
 
     def test_geetest_failure_blocks_smtp(self):
         with patch.multiple(settings,geetest_id='id',geetest_key='key',mail_host='smtp.example.com'),patch('app.main.httpx.post',return_value=Mock(json=lambda:{'result':'fail'})),patch('smtplib.SMTP') as smtp:

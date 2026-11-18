@@ -1,0 +1,12 @@
+{
+  "CORSRule": [
+    {
+      "ID": "blog-local-preview",
+      "AllowedOrigin": ["http://127.0.0.1:5173"],
+      "AllowedMethod": ["PUT", "GET", "HEAD"],
+      "AllowedHeader": ["Content-Type", "Content-Length"],
+      "ExposeHeader": ["ETag"],
+      "MaxAgeSeconds": 600
+    }
+  ]
+}

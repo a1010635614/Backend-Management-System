@@ -10,9 +10,11 @@
 
 ## 腾讯云 COS 海量文件上传
 
-当前实现浏览器直传 COS：API 使用服务器密钥签发五分钟有效的 PUT URL，限定对象 key 和内容类型。前端将返回的资源地址写入文章。配置 COS CORS 仅允许本站域名与 PUT、Content-Type 头；使用最小权限 CAM 密钥，配置生命周期规则。严禁把 SecretKey 放在 Vue 环境变量或浏览器代码中。当前 10MB 限制仅在客户端，生产还需要云侧大小/内容审查；私有桶的展示资源需要配置 CDN 鉴权或下载签名。
+浏览器直传 COS：`POST /api/uploads/presign` 接收 JSON filename/contentType/size，服务端拒绝非图片/PDF、空文件和超过 10MiB 的声明，生成限定 key、Content-Type、Content-Length 的五分钟 PUT 签名。上传成功后调用 `/api/uploads/{id}/complete`，后端通过 HEAD 核对实际大小和类型，附件才能写入文章。文件名与对象 key 分离，客户端不能指定桶内路径。
 
-已实现 `/api/uploads/presign`，通过腾讯云原生 Python SDK 生成预签名地址；尚需使用真实腾讯云桶验证上传。并未实现 STS 临时凭证模式。`COS_PUBLIC_BASE_URL` 填可访问的 CDN 资源域名，不要填上传签名地址。参考[腾讯云预签名文档](https://cloud.tencent.com/document/product/436/35153)。
+私有桶附件在文章中保存 `[[asset:UUID]]` 标记。仅完成确认且被现有文章引用的附件，才可通过 `/api/media/{id}` 获取五分钟 GET 签名跳转；文章删除后入口返回 404，已发出的签名会在有效期后失效。预览图片与 PDF 链接由 Vue 渲染，不把长期签名写入文章。当前以 COS 私有读取为基础，`COS_PUBLIC_BASE_URL` 为未来 CDN 配置预留，尚未启用 CDN 签名或 STS。签名与元数据测试使用模拟对象，真实桶仍待联调；大小/MIME 校验不等同于文件内容安全扫描。参考[预签名 URL](https://cloud.tencent.com/document/product/436/35153)与[对象元数据](https://cloud.tencent.com/document/product/436/65828)。
+
+创建私有读写桶；受限子账号只授权对应桶 `uploads/*` 的上传和读取（包含 HEAD 查询）权限。配置 CORS：Origin 为实际使用的 `http://127.0.0.1:5173` 与备案后的网站 HTTPS Origin，允许 PUT/GET/HEAD 和 Content-Type 头，可暴露 ETag。密钥只在服务器环境配置。暂未使用的上传对象需要按业务保留规则清理；当前不会自动删除用户文件。
 
 ## 极验 + 邮箱验证码登录
 

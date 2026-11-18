@@ -1,0 +1,17 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:PutObject",
+        "name/cos:HeadObject",
+        "name/cos:GetObject",
+        "name/cos:OptionsObject"
+      ],
+      "resource": [
+        "qcs::cos:ap-shanghai:uid/1317119844:kongqi-agent-1317119844/uploads/*"
+      ]
+    }
+  ]
+}

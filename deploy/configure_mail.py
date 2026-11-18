@@ -45,7 +45,7 @@ def main():
     password=read_password()
     if not password or any(ord(c)<32 or ord(c)>126 for c in password):
         raise SystemExit('Password must be nonempty single-line ASCII.')
-    payload={'password':password,'files':{name:(ROOT/'backend/app'/name).read_text(encoding='utf-8') for name in ('main.py','mailer.py')}}
+    payload={'password':password,'files':{'mailer.py':(ROOT/'backend/app/mailer.py').read_text(encoding='utf-8')}}
     program=(ROOT/'deploy/configure_mail_remote.py').read_text(encoding='utf-8')
     command='/opt/vueblog/venv/bin/python -c '+shlex.quote(program)
     status('Stage 3/3: checking SMTP authentication and applying configuration...')

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -eu
+if [ -f /etc/vueblog.env ]; then /usr/local/sbin/vueblog-backup; fi
 release="/opt/vueblog/releases/$(date -u +%Y%m%d%H%M%S)"
 mkdir -p "$release"
 tar -xzf /opt/vueblog/release.tar.gz -C "$release"
@@ -101,9 +102,15 @@ fi
 ln -sfn /etc/nginx/sites-available/vueblog /etc/nginx/sites-enabled/vueblog
 nginx -t
 systemctl reload nginx
+healthy=false
 for retry in $(seq 1 15); do
-    if curl -fsS http://127.0.0.1:8000/api/health; then break; fi
+    if curl -fsS --max-time 3 http://127.0.0.1:8000/api/health 2>/dev/null; then healthy=true; break; fi
     sleep 1
 done
-curl -fsS -H 'Host: kongqi.xyz' http://127.0.0.1/api/health
+"$healthy" || { echo 'API failed health check'; exit 1; }
+if [ -f /etc/letsencrypt/live/kongqi.xyz/fullchain.pem ]; then
+    curl -fsS --max-time 10 --resolve kongqi.xyz:443:127.0.0.1 https://kongqi.xyz/api/health
+else
+    curl -fsS --max-time 10 -H 'Host: kongqi.xyz' http://127.0.0.1/api/health
+fi
 systemctl is-active vueblog postgresql nginx

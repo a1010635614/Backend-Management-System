@@ -24,7 +24,7 @@ systemctl restart vueblog
 systemctl reload nginx
 ```
 
-修改第三方配置可使用 `sudoedit /etc/vueblog.env`，随后重启 vueblog。邮件、极验、COS、百度统计配置与 .env.example 对应。ADMIN_EMAILS 必须设置管理员邮箱；当前为空，且 MAIL_HOST 为空，线上邮箱登录不可用。生产没有启用本地预览登录码。
+修改第三方配置可使用 `sudoedit /etc/vueblog.env`，随后重启 vueblog。邮件、极验、COS、百度统计配置与 .env.example 对应。2026-11-18 已配置 SMTP_SSL 465 与管理员白名单，用户反馈收到验证码并成功登录。生产没有启用本地预览登录码。
 
 阿里云 SMTP 465 与管理员邮箱接入：用户在项目目录的交互 PowerShell 运行 `backend/.venv/Scripts/python.exe deploy/configure_mail.py`。脚本会先验证 SSH 主机，随后隐藏输入 SMTP 密码，不在本地保存密码；只验证 SMTP TLS/AUTH，不自动发送邮件；成功后更新后端代码、发件配置和管理员 kongqi_company@163.com。服务重启及健康检查失败会还原原代码和配置。邮箱接收与实际登录需要用户之后在登录页面触发验证。
 
@@ -43,10 +43,10 @@ runuser -u postgres -- pg_dump blog > /root/blog-$(date +%Y%m%d%H%M%S).sql
 
 ## 验证与剩余事项
 
-真实 PostgreSQL 16 的迁移与结构检查通过，8 项回归全通过；测试库 blog_ci 已删除。HTTPS、API 健康检查、Swagger 和前端路由入口实测成功。数据库为空，尚无文章。
+真实 PostgreSQL 16 的迁移与结构检查通过，最新附件版本在隔离测试库的 12 项回归全部通过；测试库 blog_ci 已删除。HTTPS、API 健康检查、Swagger 和前端路由入口实测成功；用户已收到邮件验证码并登录后台。
 
 公网 HTTP 返回云平台 Non-compliance ICP Filing 拦截页，而服务器内部 HTTP 301 正常。请在阿里云核查首次备案或接入备案；不能因为 HTTPS 当时可访问就视为域名稳定上线。域名解析正常和 SSL 证书有效均不代表备案状态已完成。
 
 证书已签发，有效期至 2027-02-15。certbot.timer 已启用，但 `certbot renew --dry-run` 实际失败：CA 的 HTTP challenge 验证收到 403。当前不能声称自动续期已经验收通过，备案拦截处理后需重新演练。Certbot 测试默认可能随机等待数分钟，可在人工复验时加 `--no-random-sleep-on-renew`，避免把等待误判成进程卡死。
 
-后续：备案状态确认；邮件/极验/COS/百度统计实联；GitHub 代码提交推送；云效/ACR/飞书联调；备份、发布回滚与完整上线验收。
+后续：备案状态确认；极验/COS/百度统计实联；云效/ACR/飞书联调；异地备份、发布回滚与完整上线验收。GitHub main 已推送基础提交 d7bc812。私有附件 0002 迁移及对应新代码已部署生产并复核管理员用户保留和服务健康；COS 子账号密钥尚未配置，文件上传/下载仍需真实桶验收。

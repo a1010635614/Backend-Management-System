@@ -8,7 +8,7 @@ groups={
     'Admin allowlist':['ADMIN_EMAILS'],
     'SMTP':['MAIL_HOST','MAIL_USERNAME','MAIL_PASSWORD','MAIL_FROM'],
     'GeeTest':['GEETEST_ID','GEETEST_KEY'],
-    'COS':['COS_SECRET_ID','COS_SECRET_KEY','COS_REGION','COS_BUCKET','COS_PUBLIC_BASE_URL'],
+    'COS':['COS_SECRET_ID','COS_SECRET_KEY','COS_REGION','COS_BUCKET'],
     'Baidu analytics':['BAIDU_HM_ID'],
 }
 for name,keys in groups.items():
