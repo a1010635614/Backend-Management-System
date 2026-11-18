@@ -11,6 +11,13 @@ COPY --from=python-runtime /usr/local/ /usr/local/
 ENV PATH=/usr/local/bin:$PATH
 RUN test "$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")" = bookworm \
     && rm -f /etc/apt/sources.list.d/pgdg.list \
+    && for source in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+         if [ -f "$source" ]; then \
+           sed -i -E 's|https?://deb\.debian\.org|https://mirrors.aliyun.com|g' "$source"; \
+         fi; \
+       done \
+    && printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "30";' \
+       'Acquire::https::Timeout "30";' > /etc/apt/apt.conf.d/80flow-network \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
        bash util-linux ca-certificates libbluetooth3 libbz2-1.0 libdb5.3 \

@@ -52,6 +52,8 @@ bash deploy/build-flow.sh
 
 新版只要求任务环境有 Bash、Git、Docker 和 tar。Dockerfile.flow-build 使用多阶段构建：在同为 Debian bookworm 的 PostgreSQL 16 与 Python 3.12 官方运行时中启动独立临时数据库，执行迁移、结构检查和全部后端检查，要求零跳过；接着由 Node 22 构建前端，再用共享模块打包并校验原生制品。前端阶段依赖后端实际检查完成，未通过则无法构建最终导出镜像。多阶段机制参见[Docker 官方说明](https://docs.docker.com/build/building/multi-stage/)。
 
+第 6 次 Flow 运行已实际检出 3ee905c，三个基础镜像完成拉取，随后在 Debian 官方源的 bookworm 软件包索引下载阶段多次重试。后续版本仅在 Flow 检查镜像内，将 Debian 主源及安全更新源改为阿里云公开 HTTPS 镜像，并设置连接超时 30 秒、重试两次；保留 Debian 签名和 HTTPS 证书校验。此设置不修改业务服务器的软件源，不会改变已开始的运行。镜像地址参见[阿里云 Debian 镜像](https://developer.aliyun.com/mirror/debian)。镜像更换后的实际速度与完整构建仍待新一次 Flow 运行验证。
+
 源码从指定提交通过 git archive 传给构建，不挂载工作区或传入生产配置。完成后运行本地制品镜像，将 tar 输出直接解到新的私有临时目录；导出进程退出码、解压或必需文件检查有任一失败则清理本次临时目录，成功才移动为 artifacts。临时 PostgreSQL 只监听回环地址，使用全新数据目录和随机端口，结束时停止并清理；不依赖跨容器网络。
 
 默认基础镜像来自 Docker Hub。支持通过 PYTHON_BUILD_IMAGE、NODE_BUILD_IMAGE、POSTGRES_TEST_IMAGE 配置来源。新版 PostgreSQL 必须使用 16-bookworm，与 Python 的 bookworm 运行时一致；旧的 16-alpine 配置会在构建前明确报错。ECR 的 16-bookworm 标签已确认有 Linux/amd64 manifest，实际组合镜像仍待云效验证。当前命令为：
@@ -68,7 +70,9 @@ bash deploy/build-flow.sh
 
 构建包包含 tar.gz、SHA256 校验文件、manifest、匹配该提交的 release-native.sh 和 stage_native_artifact.py；不在业务服务器执行 Node 构建。脚本拒绝 COMMIT_SHA 与实际检出提交不一致、已修改的跟踪构建输入或已存在 artifacts 路径；重跑应使用新的干净工作区。导出镜像只在构建环境使用，无需发布至 ACR。若 runner 已具备 Python 3.12+、Node 20+ 和完整 Docker/Compose，仍可使用 `bash deploy/build-native.sh`，两条入口复用同一制品打包模块。
 
-在“构建物上传”中选择 artifacts 目录，勾选“制品中包含打包路径的目录”，归档至云效公共存储空间，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[构建物上传参数](https://help.aliyun.com/zh/yunxiao/user-guide/python-test-build)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织配置并实际演练。
+当前 Region 站实际显示的“构建物上传”表单使用 Packages 通用制品仓库，包含服务连接、仓库、制品名称、制品版本与打包路径，没有显示上传方式切换项。先在同一组织的“制品仓库 Packages → 新建制品仓库”创建私有的通用制品仓库 `blog-artifacts`，再回到上传步骤选择该仓库；创建仓库时保留尚未保存的流水线编辑页。用户截图已确认，仓库地址左侧为云效固定前缀，右侧可编辑部分与仓库名称均填写 `blog-artifacts`，模式保留支持存储的 Hybrid 综合模式。仓库类型须为“通用制品”，GitHub 代码仓库与 ACR 镜像仓库不能代替它。已有的 Packages 服务连接可选择到该仓库时直接使用，无须另建凭据。参见[新建制品仓库](https://help.aliyun.com/zh/yunxiao/user-guide/create-repositories)。
+
+上传步骤的制品名称设为 `blog-native`，版本保留 `${BUILD_NUMBER}`，打包路径填 `artifacts/`，勾选“制品中包含打包路径的目录”。这会保留主机接收器要求的 `artifacts/` 目录层级；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。制品版本不能重复，后续主机任务必须引用同次运行上传的准确版本，不能选择不确定的“最新版本”。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[构建物上传参数](https://help.aliyun.com/zh/yunxiao/user-guide/upload-general-product-warehouse)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体仓库、主机组与部署任务仍需在用户的 Flow 组织配置并实际演练。
 
 原生控制流程检查入口为 `python3 deploy/test-native-release.py`，新版容器在后端检查阶段执行。该工具要求 Linux 和 Python 3.12+；以 root 运行时复制测试源码到临时目录，再通过 runuser/nobody 降权执行。当前源码的 29 项检查包含真实临时文件打包/校验和外层归档接收，以及用模拟 Git/Docker、pip、迁移、systemctl 和 HTTP 命令检查构建失败停止、成功切换、失败回退、归档路径/链接拒绝与并发锁。模拟 Docker 客户端拒绝 Compose/network/create/cp/inspect 等操作，检查新的宿主导出流程不会依赖它们。此控制流程检查不调用真实 Docker 或业务数据库，不能代替真实 Flow 构建、主机部署和生产回滚验收。
 
