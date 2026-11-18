@@ -65,11 +65,11 @@ systemctl daemon-reload
 systemctl restart vueblog
 healthy=false
 for retry in $(seq 1 20); do
-    if curl -fsS http://127.0.0.1:8000/api/health >/dev/null; then healthy=true; break; fi
+    if curl -fsS --connect-timeout 2 --max-time 3 http://127.0.0.1:8000/api/health >/dev/null; then healthy=true; break; fi
     sleep 1
 done
 "$healthy"
-curl -fsS --resolve kongqi.xyz:443:127.0.0.1 https://kongqi.xyz/ >/dev/null
+curl -fsS --connect-timeout 3 --max-time 10 --resolve kongqi.xyz:443:127.0.0.1 https://kongqi.xyz/ >/dev/null
 printf '%s\n' "$COMMIT_SHA" > /opt/vueblog/.current-release
 trap - ERR
 echo 'Release health checks passed.'

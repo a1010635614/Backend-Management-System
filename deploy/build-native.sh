@@ -3,6 +3,7 @@
 set -euo pipefail
 : "${COMMIT_SHA:?Map the source commit SHA from Flow}"
 [[ "$COMMIT_SHA" =~ ^[a-f0-9]{7,40}$ ]] || exit 2
+test "$(git rev-parse HEAD)" = "$COMMIT_SHA" || { echo 'COMMIT_SHA must match the full checked-out commit'; exit 2; }
 POSTGRES_TEST_IMAGE=postgres:16-alpine bash deploy/test-postgres.sh
 (cd frontend && npm ci && npm run build)
 mkdir -p artifacts
@@ -21,3 +22,4 @@ digest=hashlib.file_digest(output.open('rb'),'sha256').hexdigest()
 output.with_suffix(output.suffix+'.sha256').write_text(digest+'  '+output.name+'\n')
 Path('artifacts/manifest.json').write_text(json.dumps({'commit':sha,'archive':output.name,'sha256':digest}))
 PY
+cp deploy/release-native.sh artifacts/release-native.sh

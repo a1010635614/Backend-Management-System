@@ -12,7 +12,9 @@
 
 ## 当前小内存服务器的原生发布选项
 
-现有服务器运行 Nginx + systemd，尚未采用上面的 Docker/ACR 部署模式。Flow 可以使用 `COMMIT_SHA=<代码源提交SHA> bash deploy/build-native.sh`：runner 执行 PostgreSQL 16 专项回归和前端构建，输出 artifacts 中的 tar.gz、SHA256 校验文件和 manifest；不在服务器执行 Node 构建。
+现有服务器运行 Nginx + systemd，后续按原生制品发布接入 Flow。当前方案不需要开通 ACR；上面的 Docker/ACR 方案保留用于以后切换。Flow 构建命令先执行 `export COMMIT_SHA=$(git rev-parse HEAD)`，再执行 `bash deploy/build-native.sh`：runner 执行 PostgreSQL 16 专项回归和前端构建，输出 artifacts 中的 tar.gz、SHA256 校验文件、manifest 和匹配该提交的 release-native.sh；不在服务器执行 Node 构建。构建脚本会拒绝 COMMIT_SHA 与实际检出提交不一致的情况。
+
+在“构建物上传”中选择 artifacts 目录，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[云效构建物管理](https://help.aliyun.com/zh/yunxiao/user-guide/issues-in-building)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织创建后配置并实际演练。
 
 主机部署步骤把同一提交的压缩包和校验文件上传到 `/opt/vueblog/incoming`（首次需创建该目录），然后执行 `COMMIT_SHA=<同一SHA> bash release-native.sh`。脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 

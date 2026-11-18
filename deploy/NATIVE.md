@@ -51,4 +51,4 @@ runuser -u postgres -- pg_dump blog > /root/blog-$(date +%Y%m%d%H%M%S).sql
 
 私有附件 0002 迁移及对应代码已部署，管理员用户保留，服务健康。2026-11-18 COS 子账号凭据已配置，私有桶上传/下载与本机 CORS 检查通过，用户实际完成图片/PDF 上传、保存文章和打开附件，数据库关联记录已核对。
 
-后续：百度统计实联；云效/ACR/飞书联调；CDN、异地备份、发布回滚与完整上线验收。ICP 按用户要求暂缓，续期问题仍需解决。GitHub main 最近已核对为基础提交 d7bc812，附件提交 33f7ab8 及后续验收记录尚未推送。极验操作说明见 [GEETEST-SETUP.md](GEETEST-SETUP.md)，下一步准备见 [BAIDU-SETUP.md](BAIDU-SETUP.md)。
+百度统计 ID 已配置，用户在真实域名访问后确认后台已有访问记录或 PV/UV。后续：云效/ACR/飞书联调；CDN、异地备份、发布回滚与完整上线验收。ICP 按用户要求暂缓，续期问题仍需解决。GitHub main 最近已核对为基础提交 d7bc812，本地已有附件提交 33f7ab8、云服务验收与配置工具提交 e9fe56c，后续排查记录尚在工作区，均未在本轮推送。下一步准备见 [FEISHU-SETUP.md](FEISHU-SETUP.md)。
