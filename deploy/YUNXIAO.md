@@ -16,6 +16,8 @@
 
 在“构建物上传”中选择 artifacts 目录，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[云效构建物管理](https://help.aliyun.com/zh/yunxiao/user-guide/issues-in-building)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织创建后配置并实际演练。
 
+原生构建首先运行 `python3 deploy/test-native-release.py`。该工具要求 Linux 和 Python 3.12+；以 root 运行时会复制测试源码到临时目录，再通过 runuser/nobody 降权执行。测试模拟 pip、迁移、systemctl 和 HTTP 命令，验证成功切换、失败回退、校验失败、归档路径/链接拒绝与并发锁；不调用真实服务或业务数据库。此控制流程检查不能代替真实主机部署和生产回滚验收。
+
 主机部署步骤把同一提交的压缩包和校验文件上传到 `/opt/vueblog/incoming`（首次需创建该目录），然后执行 `COMMIT_SHA=<同一SHA> bash release-native.sh`。脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 
 **当前验证边界**：原生流水线脚本仅作准备，尚未在 Flow 运行，也未在生产执行新版发布/故障回滚演练。服务器上的首次部署仍由 install-native.sh 完成。接入账号后需在测试环境完成流水线与回滚验收，再切换正式发布方式。两种方案只能选定一种用于同一服务，避免相互覆盖。
