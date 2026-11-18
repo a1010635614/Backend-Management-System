@@ -52,7 +52,7 @@ bash deploy/build-flow.sh
 
 新版只要求任务环境有 Bash、Git、Docker 和 tar。Dockerfile.flow-build 使用多阶段构建：在同为 Debian bookworm 的 PostgreSQL 16 与 Python 3.12 官方运行时中启动独立临时数据库，执行迁移、结构检查和全部后端检查，要求零跳过；接着由 Node 22 构建前端，再用共享模块打包并校验原生制品。前端阶段依赖后端实际检查完成，未通过则无法构建最终导出镜像。多阶段机制参见[Docker 官方说明](https://docs.docker.com/build/building/multi-stage/)。
 
-第 6 次 Flow 运行已实际检出 3ee905c，三个基础镜像完成拉取，随后在 Debian 官方源的 bookworm 软件包索引下载阶段多次重试。后续版本仅在 Flow 检查镜像内，将 Debian 主源及安全更新源改为阿里云公开 HTTPS 镜像，并设置连接超时 30 秒、重试两次；保留 Debian 签名和 HTTPS 证书校验。此设置不修改业务服务器的软件源，不会改变已开始的运行。镜像地址参见[阿里云 Debian 镜像](https://developer.aliyun.com/mirror/debian)。镜像更换后的实际速度与完整构建仍待新一次 Flow 运行验证。
+第 6 次 Flow 运行已实际检出 3ee905c，三个基础镜像完成拉取，随后在 Debian 官方源的 bookworm 软件包索引下载阶段多次重试，最终恢复并于 2026-11-19 00:11:41 完成完整构建。后续版本仅在 Flow 检查镜像内，将 Debian 主源及安全更新源改为阿里云公开 HTTPS 镜像，并设置连接及数据传输超时 30 秒、重试两次；保留 Debian 签名和 HTTPS 证书校验。此设置不修改业务服务器的软件源，不会改变已开始的运行。镜像地址参见[阿里云 Debian 镜像](https://developer.aliyun.com/mirror/debian)。新镜像源的实际速度仍待之后的 Flow 运行验证。
 
 源码从指定提交通过 git archive 传给构建，不挂载工作区或传入生产配置。完成后运行本地制品镜像，将 tar 输出直接解到新的私有临时目录；导出进程退出码、解压或必需文件检查有任一失败则清理本次临时目录，成功才移动为 artifacts。临时 PostgreSQL 只监听回环地址，使用全新数据目录和随机端口，结束时停止并清理；不依赖跨容器网络。
 
@@ -104,4 +104,4 @@ export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 
 发布脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 
-**当前验证边界**：旧版 Flow 已实际运行，后端镜像成功构建，但 Compose 网络操作被拒绝，未生成发布包。新版多阶段构建修复、真正的 Flow PostgreSQL 检查/前端构建/制品导出、主机发布和故障回滚仍待云效实测。服务器上的首次部署仍由 install-native.sh 完成。两种发布方案只能选定一种用于同一服务，避免相互覆盖。
+**当前验证边界**：旧版 Flow 曾因 Compose 网络接口被拒绝而失败。新版在真实 Flow 第 6 次运行（源码 3ee905c）已完成 29 项发布控制/制品检查、真实临时 PostgreSQL 16.16 的 14 项业务检查（零跳过）、Vue 类型检查及生产构建、制品打包/校验/导出，执行命令步骤明确 SUCCESS。Packages 上传、主机发布、真实故障回滚、飞书终态通知与 GitHub 提交触发仍待实际验收；后续 Debian 镜像源调整也尚未在 Flow 验证。服务器上的首次部署仍由 install-native.sh 完成。两种发布方案只能选定一种用于同一服务，避免相互覆盖。
