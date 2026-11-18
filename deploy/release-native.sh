@@ -28,7 +28,7 @@ PY
 chown -R blog:blog "$release"
 chmod 755 "$release" "$release/frontend"
 python3 -m venv "$release/.venv"
-"$release/.venv/bin/pip" install --disable-pip-version-check --no-cache-dir -q -r "$release/backend/requirements.txt"
+"$release/.venv/bin/pip" install --disable-pip-version-check --no-cache-dir --index-url "${PYTHON_PACKAGE_INDEX:-https://pypi.org/simple}" -q -r "$release/backend/requirements.txt"
 cd "$release/backend"
 "$release/.venv/bin/python" -m unittest discover -s tests -v
 # Run schema changes once, without shell-expanding secret values.

@@ -1,8 +1,9 @@
 ARG PYTHON_BUILD_IMAGE=python:3.12-slim
 FROM ${PYTHON_BUILD_IMAGE}
+ARG PYTHON_PACKAGE_INDEX=https://pypi.org/simple
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --index-url "$PYTHON_PACKAGE_INDEX" -r requirements.txt
 COPY app ./app
 COPY alembic.ini .
 COPY migrations ./migrations

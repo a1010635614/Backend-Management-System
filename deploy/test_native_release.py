@@ -1,6 +1,7 @@
 """Linux shell control-flow tests with fake runtime/service commands, never production deployment."""
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -28,7 +29,7 @@ class NativeReleaseTests(unittest.TestCase):
         self.unit.write_text(self.original_unit)
         self.bin=self.root/'bin';self.bin.mkdir()
         self.log=self.root/'commands.log'
-        self.env={**os.environ,'PATH':str(self.bin)+':'+os.environ['PATH'],'VUEBLOG_TEST_LOG':str(self.log),'VUEBLOG_TEST_FAILURE':''}
+        self.env={**os.environ,'PATH':str(self.bin)+':'+os.environ['PATH'],'VUEBLOG_TEST_LOG':str(self.log),'VUEBLOG_TEST_FAILURE':'','VUEBLOG_TEST_PIP_ARGS':str(self.root/'pip-args.json')}
         self.write_command('systemctl',"""import os,sys
 from pathlib import Path
 p=Path(os.environ['VUEBLOG_TEST_LOG']);before=p.read_text() if p.exists() else ''
@@ -55,7 +56,9 @@ if sys.argv[1:]==['-']:sys.stdin.read()
 with open(os.environ['VUEBLOG_TEST_LOG'],'a') as f:f.write(step+'\\n')
 sys.exit(1 if os.environ.get('VUEBLOG_TEST_FAILURE')==step else 0)
 """)
-        pip=self.write_command('pip',"""import os,sys
+        pip=self.write_command('pip',"""import json,os,sys
+from pathlib import Path
+Path(os.environ['VUEBLOG_TEST_PIP_ARGS']).write_text(json.dumps(sys.argv[1:]))
 sys.exit(1 if os.environ.get('VUEBLOG_TEST_FAILURE')=='pip' else 0)
 """)
         self.env.update(VUEBLOG_TEST_RUNTIME=str(runtime),VUEBLOG_TEST_PIP=str(pip))
@@ -107,11 +110,14 @@ else:
         self.assertEqual(self.marker.read_text(),'b'*40+'\n')
 
     def test_success_switches_code_service_and_marker(self):
+        self.env['PYTHON_PACKAGE_INDEX']='https://mirrors.aliyun.com/pypi/simple/'
         result=self.run_release()
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual((self.home/'current').resolve(),self.home/'releases'/self.sha)
         self.assertIn(str(self.home)+'/current/.venv/bin/python',self.unit.read_text())
         self.assertEqual(self.marker.read_text(),self.sha+'\n')
+        pip_args=json.loads((self.root/'pip-args.json').read_text())
+        self.assertEqual(pip_args[pip_args.index('--index-url')+1],self.env['PYTHON_PACKAGE_INDEX'])
 
     def test_health_failures_restore_current_unit_and_marker(self):
         for failure in ('api','site','restart'):

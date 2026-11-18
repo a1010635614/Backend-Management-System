@@ -58,6 +58,7 @@ export COMMIT_SHA=$(git rev-parse HEAD)
 export PYTHON_BUILD_IMAGE=public.ecr.aws/docker/library/python:3.12-slim-bookworm
 export NODE_BUILD_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim
 export POSTGRES_TEST_IMAGE=public.ecr.aws/docker/library/postgres:16-alpine
+export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 bash deploy/build-flow.sh
 ```
 
@@ -77,11 +78,14 @@ bash deploy/build-flow.sh
 
 在上传步骤中，制品名称可设为 `blog-native`，打包路径为 `artifacts/` 并勾选包含目录。随后添加“主机部署”任务，选择同次运行的该制品与 `blog-production` 主机组，执行用户为 root。下载路径建议使用界面内置的 PIPELINE_ID、BUILD_NUMBER 变量组成 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，避免不同运行覆盖同一个下载文件；实际变量展开及下载位置需通过首次任务日志确认。
 
+Python 包下载可通过 PYTHON_PACKAGE_INDEX 选择公开 HTTPS 包源，默认仍为 https://pypi.org/simple。该变量传入后端测试镜像构建，也由原生 release-native.sh 接收；可配置为 `https://mirrors.aliyun.com/pypi/simple/`。当前日志中 SQLAlchemy 的 3.2MB 下载速度仅 12.7kB/s，本机从阿里云官方镜像成功下载同一 Linux wheel，尚未在当前云效运行中验证镜像速度。此设置供下一次检出新脚本的运行使用，不会修改当前已经启动的 pip 进程。包源说明见[阿里云 PyPI 镜像](https://developer.aliyun.com/mirror/pypi)，参数见[pip install](https://pip.pypa.io/en/stable/cli/pip_install/)。使用 HTTPS 并保留证书校验，不添加 trusted-host。
+
 首次主机任务先检查真实下载包：
 
 ```bash
 set -euo pipefail
 : "${PIPELINE_ID:?}" "${BUILD_NUMBER:?}"
+export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 /usr/local/sbin/vueblog-flow-deploy \
   "/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz" --verify-only
 ```

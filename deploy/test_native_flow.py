@@ -61,7 +61,7 @@ class FlowBuildControlTests(unittest.TestCase):
         deploy = self.root / 'deploy'
         deploy.mkdir()
         shutil.copyfile(Path(__file__).with_name('build-flow.sh'), deploy / 'build-flow.sh')
-        (deploy / 'test-postgres.sh').write_text('if [[ "${FLOW_TEST_FAILURE:-}" == postgres ]]; then exit 7; fi\nprintf "%s\\n%s\\n" "$PYTHON_BUILD_IMAGE" "$POSTGRES_TEST_IMAGE" > postgres-images.txt\n')
+        (deploy / 'test-postgres.sh').write_text('if [[ "${FLOW_TEST_FAILURE:-}" == postgres ]]; then exit 7; fi\nprintf "%s\\n%s\\n%s\\n" "$PYTHON_BUILD_IMAGE" "$POSTGRES_TEST_IMAGE" "$PYTHON_PACKAGE_INDEX" > postgres-images.txt\n')
         self.log = self.root / 'docker.jsonl'
 
     def run_build(self, failure='', images=None):
@@ -117,7 +117,8 @@ class FlowBuildControlTests(unittest.TestCase):
     def test_configured_image_sources_reach_tools_frontend_and_database_checks(self):
         images = {'PYTHON_BUILD_IMAGE': 'public.ecr.aws/docker/library/python:3.12-slim-bookworm',
                   'NODE_BUILD_IMAGE': 'public.ecr.aws/docker/library/node:22-bookworm-slim',
-                  'POSTGRES_TEST_IMAGE': 'public.ecr.aws/docker/library/postgres:16-alpine'}
+                  'POSTGRES_TEST_IMAGE': 'public.ecr.aws/docker/library/postgres:16-alpine',
+                  'PYTHON_PACKAGE_INDEX': 'https://mirrors.aliyun.com/pypi/simple/'}
         result, calls = self.run_build(images=images)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         build = next(call for call in calls if call[0] == 'build')
@@ -125,7 +126,7 @@ class FlowBuildControlTests(unittest.TestCase):
         web = next(call for call in calls if call[0] == 'create')
         self.assertIn(images['NODE_BUILD_IMAGE'], web)
         self.assertEqual((self.root / 'postgres-images.txt').read_text().splitlines(),
-                         [images['PYTHON_BUILD_IMAGE'], images['POSTGRES_TEST_IMAGE']])
+                         [images['PYTHON_BUILD_IMAGE'], images['POSTGRES_TEST_IMAGE'], images['PYTHON_PACKAGE_INDEX']])
 
 
 if __name__ == '__main__': unittest.main()

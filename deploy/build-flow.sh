@@ -39,9 +39,10 @@ start_checked() {
 python_image="${PYTHON_BUILD_IMAGE:-python:3.12-slim-bookworm}"
 node_image="${NODE_BUILD_IMAGE:-node:22-bookworm-slim}"
 postgres_image="${POSTGRES_TEST_IMAGE:-postgres:16-alpine}"
+package_index="${PYTHON_PACKAGE_INDEX:-https://pypi.org/simple}"
 tools_image="vueblog-flow-tools:${COMMIT_SHA}"
 git archive "${COMMIT_SHA}:deploy" | docker build --tag "$tools_image" --build-arg "PYTHON_BUILD_IMAGE=$python_image" --file Dockerfile.flow-tools -
-PYTHON_BUILD_IMAGE="$python_image" POSTGRES_TEST_IMAGE="$postgres_image" bash deploy/test-postgres.sh
+PYTHON_BUILD_IMAGE="$python_image" POSTGRES_TEST_IMAGE="$postgres_image" PYTHON_PACKAGE_INDEX="$package_index" bash deploy/test-postgres.sh
 
 web=$(docker create --workdir /frontend "$node_image" sh -c 'npm ci && npm run build')
 [[ "$web" =~ ^[a-f0-9]{64}$ ]] || { echo 'Docker did not return a container ID'; exit 1; }
