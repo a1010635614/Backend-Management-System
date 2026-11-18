@@ -24,3 +24,4 @@ output.with_suffix(output.suffix+'.sha256').write_text(digest+'  '+output.name+'
 Path('artifacts/manifest.json').write_text(json.dumps({'commit':sha,'archive':output.name,'sha256':digest}))
 PY
 cp deploy/release-native.sh artifacts/release-native.sh
+cp deploy/stage_native_artifact.py artifacts/stage_native_artifact.py
