@@ -65,9 +65,28 @@ bash deploy/build-flow.sh
 
 在“构建物上传”中选择 artifacts 目录，勾选“制品中包含打包路径的目录”，归档至云效公共存储空间，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[构建物上传参数](https://help.aliyun.com/zh/yunxiao/user-guide/python-test-build)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织配置并实际演练。
 
-原生控制流程检查入口为 `python3 deploy/test-native-release.py`，容器入口在工具镜像构建时执行该检查。该工具要求 Linux 和 Python 3.12+；以 root 运行时会复制测试源码到临时目录，再通过 runuser/nobody 降权执行。当前 23 项检查包含真实临时文件打包/校验，以及用模拟 Git/Docker、pip、迁移、systemctl 和 HTTP 命令检查构建失败停止、成功切换、失败回退、归档路径/链接拒绝与并发锁；不调用真实 Docker 服务、生产服务或业务数据库。此控制流程检查不能代替真实 Flow 构建、主机部署和生产回滚验收。
+原生控制流程检查入口为 `python3 deploy/test-native-release.py`，容器入口在工具镜像构建时执行该检查。该工具要求 Linux 和 Python 3.12+；以 root 运行时会复制测试源码到临时目录，再通过 runuser/nobody 降权执行。当前源码的 28 项检查包含真实临时文件打包/校验和外层归档接收，以及用模拟 Git/Docker、pip、迁移、systemctl 和 HTTP 命令检查构建失败停止、成功切换、失败回退、归档路径/链接拒绝与并发锁；不调用真实 Docker 服务、生产服务或业务数据库。此控制流程检查不能代替真实 Flow 构建、主机部署和生产回滚验收。
 
 构建产物同时包含 stage_native_artifact.py，作为主机部署入口。将本次 Flow 运行下载的可信制品解压后，对包含 manifest.json 的 artifacts 目录执行 `python3 <解压目录>/artifacts/stage_native_artifact.py <解压目录>/artifacts`。入口要求完整提交 SHA、准确的归档名称、manifest/校验文件/实际归档的 SHA-256 一致，以及同包内的 release-native.sh；若部署任务传入 COMMIT_SHA，还必须与该次制品一致。失败在复制/发布前停止，校验通过后将归档及校验文件原子放入 `/opt/vueblog/incoming`，调用该包附带的发布脚本。可加 `--verify-only` 仅检查而不复制或部署。该入口只用于可信 Flow 制品，不提供对任意来源脚本的授权保证。
+
+### 已有服务器的接收命令
+
+`python deploy/install_flow_receiver.py` 使用本机既有专用 SSH 连接，安装独立的 `/usr/local/sbin/vueblog-flow-deploy`。安装时校验源码 SHA-256 并执行 `--help`；已有同名文件内容不一致时停止，供人工检查，不覆盖其他工具。此步骤只安装接收命令，实际发布由之后的 Flow 主机任务调用。
+
+接收器 `receive_flow_artifact.py` 在私有临时目录解开 Flow 外层归档，使用 Python 3.12 的 data 过滤并拒绝链接/特殊文件，调用包内匹配版本的 stage_native_artifact.py；结束时清理临时文件。若上传时遗漏“制品中包含打包路径的目录”，会在调用入口前报告路径错误。它只用于来自本次可信 Flow 运行的归档，内容哈希检查不承担验证第三方脚本来源的职责。
+
+在上传步骤中，制品名称可设为 `blog-native`，打包路径为 `artifacts/` 并勾选包含目录。随后添加“主机部署”任务，选择同次运行的该制品与 `blog-production` 主机组，执行用户为 root。下载路径建议使用界面内置的 PIPELINE_ID、BUILD_NUMBER 变量组成 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，避免不同运行覆盖同一个下载文件；实际变量展开及下载位置需通过首次任务日志确认。
+
+首次主机任务先检查真实下载包：
+
+```bash
+set -euo pipefail
+: "${PIPELINE_ID:?}" "${BUILD_NUMBER:?}"
+/usr/local/sbin/vueblog-flow-deploy \
+  "/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz" --verify-only
+```
+
+该步骤成功后，将最后的 `--verify-only` 去掉即可进入原生发布。若配置 COMMIT_SHA，使用界面变量选择器映射本次 GitHub 源的完整提交号；不填固定的旧 SHA。不能只将文件下载成功当作部署成功，最终必须核对 `/opt/vueblog/.current-release`、服务健康、实际网站与本次源提交。
 
 发布脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 

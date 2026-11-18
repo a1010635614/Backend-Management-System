@@ -8,7 +8,7 @@ tag='native-check-'+secrets.token_hex(8)
 archive=ROOT/'.local'/(tag+'.tar.gz')
 archive.parent.mkdir(exist_ok=True)
 with tarfile.open(archive,'w:gz') as tar:
-    for name in ('release-native.sh','test_native_release.py','test-native-release.py','test_native_artifact.py','stage_native_artifact.py','test_native_package.py','package_native.py','test_native_flow.py','build-flow.sh'):
+    for name in ('release-native.sh','test_native_release.py','test-native-release.py','test_native_artifact.py','stage_native_artifact.py','test_native_package.py','package_native.py','test_native_flow.py','build-flow.sh','receive_flow_artifact.py','test_native_receive.py'):
         tar.add(ROOT/'deploy'/name,arcname=name)
 target='/opt/vueblog/verification/'+tag
 with archive.open('rb') as source:

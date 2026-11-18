@@ -16,7 +16,7 @@ def main():
     else:
         with tempfile.TemporaryDirectory(prefix='vueblog-release-tests-',dir='/tmp') as work:
             sandbox=Path(work);sandbox.chmod(0o755)
-            for name in ('test_native_release.py','release-native.sh','test_native_artifact.py','stage_native_artifact.py','test_native_package.py','package_native.py','test_native_flow.py','build-flow.sh'):
+            for name in ('test_native_release.py','release-native.sh','test_native_artifact.py','stage_native_artifact.py','test_native_package.py','package_native.py','test_native_flow.py','build-flow.sh','receive_flow_artifact.py','test_native_receive.py'):
                 shutil.copyfile(source/name,sandbox/name)
                 (sandbox/name).chmod(0o644)
             subprocess.run(['runuser','-u','nobody','--',sys.executable,'-m','unittest','discover','-s',str(sandbox),'-p','test_native_*.py','-v'],cwd=sandbox,check=True)

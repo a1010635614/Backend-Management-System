@@ -8,6 +8,7 @@ COPY test-native-release.py test_native_release.py release-native.sh ./
 COPY test_native_artifact.py stage_native_artifact.py ./
 COPY test_native_package.py package_native.py ./
 COPY test_native_flow.py build-flow.sh ./
+COPY receive_flow_artifact.py test_native_receive.py ./
 RUN python test-native-release.py
 RUN mkdir -p /workspace/backend /workspace/frontend/dist /workspace/deploy
 WORKDIR /workspace
