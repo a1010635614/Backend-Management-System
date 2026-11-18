@@ -1,8 +1,8 @@
 # GitHub → 云效 Flow → 服务器 → 飞书
 
-这些文件是 Flow 命令步骤调用的脚本，需在你的云效组织创建流水线，不能仅凭仓库文件自动开通云服务。
+这些文件是 Flow 命令步骤调用的脚本，需在你的云效组织创建流水线，不能仅凭仓库文件自动开通云服务。以下前五步为保留的 Docker/ACR 容器化方案，要求 runner 支持 Compose；当前小内存服务器采用后文的原生制品方案。
 
-1. 创建 Flow 流水线，添加 GitHub 代码源，授权仓库，选择 main 分支。开启代码源触发，在 GitHub 设置 Flow 生成的 Webhook，勾选 push，按 main 过滤。参考 [官方代码源触发说明](https://help.aliyun.com/zh/yunxiao/user-guide/code-source-trigger)。
+1. 创建 Flow 流水线，添加 GitHub 代码源，授权仓库，选择 main 分支。先完成手动构建和发布验收，再开启代码源触发，在 GitHub 设置 Flow 生成的 Webhook，勾选 push，按 main 过滤。参考 [官方代码源触发说明](https://help.aliyun.com/zh/yunxiao/user-guide/code-source-trigger)。
 2. 构建任务选择带 Docker Compose v2 的 Linux runner。使用云效凭据进行 ACR 登录，把代码源提交 SHA 映射到 COMMIT_SHA，配置 IMAGE_PREFIX，然后执行 `bash deploy/build.sh`。脚本首先启动隔离 PostgreSQL 17 测试环境，执行迁移、结构一致性检查及接口回归（包含并发验证码单次消费）；失败则停止，不推送镜像。随后前后端 Dockerfile 执行依赖安装和构建。
 3. 部署主机安装 Docker Compose v2、curl、flock。将 compose.production.yml 放到专用部署目录，把生产环境配置保存为同目录 .env，DATABASE_URL 指向托管 PostgreSQL；服务器配置 ACR 只读凭据。云效使用主机部署步骤传入 IMAGE_PREFIX、COMMIT_SHA，在该目录执行 release.sh。禁止将 .env 放入构建产物。
 4. 在成功和失败两个分支各添加通知步骤（配置失败也执行）：设置 FEISHU_WEBHOOK、FEISHU_SIGNING_SECRET 加密变量，并映射 DEPLOY_ENV、COMMIT_SHA、BRANCH_NAME、SITE_URL、PIPELINE_URL，分别执行 `python3 deploy/notify.py success` 或 `python3 deploy/notify.py failure`。签名遵循[飞书机器人文档](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)。
@@ -48,25 +48,31 @@ export COMMIT_SHA=$(git rev-parse HEAD)
 bash deploy/build-flow.sh
 ```
 
-`build-flow.sh` 只要求任务环境提供 Bash、Git、Docker 和 Compose。它用 Python 3.12 工具镜像执行隔离检查，再执行 PostgreSQL 16 真实集成检查，用 Node 22 容器构建前端，最后输出原生 artifacts 发布包。构建读取指定提交中的跟踪文件，通过 `git archive` 和 `docker cp` 传输，不依赖任务容器与 Docker 服务共享相同宿主机路径，也不挂载密钥或传入生产配置。前端/打包容器必须以状态 exited、退出码 0 完成；构建失败不导出制品。脚本只清理自身创建的临时容器，不清理其他容器或构建缓存。Docker 文件传输语义参见[官方 docker cp 说明](https://docs.docker.com/reference/cli/docker/container/cp/)。
+实际旧版 Flow 运行在后端镜像导出后返回 `flow not support`，清理阶段明确报 `failed to list networks`。镜像构建期间的 14 项检查带 skipped=1，不代表 PostgreSQL 集成已运行。针对该环境，新版 build-flow.sh 不调用 Compose、Docker 网络管理、容器复制或检查接口，只使用已验证可用的 info/build/run。
 
-默认基础镜像来自 Docker Hub。支持通过 PYTHON_BUILD_IMAGE、NODE_BUILD_IMAGE、POSTGRES_TEST_IMAGE 配置镜像来源；Python 变量同时传入工具镜像和后端 PostgreSQL 检查镜像，避免部分步骤意外回到默认仓库。三条 ECR 验证全部通过后，可使用：
+新版只要求任务环境有 Bash、Git、Docker 和 tar。Dockerfile.flow-build 使用多阶段构建：在同为 Debian bookworm 的 PostgreSQL 16 与 Python 3.12 官方运行时中启动独立临时数据库，执行迁移、结构检查和全部后端检查，要求零跳过；接着由 Node 22 构建前端，再用共享模块打包并校验原生制品。前端阶段依赖后端实际检查完成，未通过则无法构建最终导出镜像。多阶段机制参见[Docker 官方说明](https://docs.docker.com/build/building/multi-stage/)。
+
+源码从指定提交通过 git archive 传给构建，不挂载工作区或传入生产配置。完成后运行本地制品镜像，将 tar 输出直接解到新的私有临时目录；导出进程退出码、解压或必需文件检查有任一失败则清理本次临时目录，成功才移动为 artifacts。临时 PostgreSQL 只监听回环地址，使用全新数据目录和随机端口，结束时停止并清理；不依赖跨容器网络。
+
+默认基础镜像来自 Docker Hub。支持通过 PYTHON_BUILD_IMAGE、NODE_BUILD_IMAGE、POSTGRES_TEST_IMAGE 配置来源。新版 PostgreSQL 必须使用 16-bookworm，与 Python 的 bookworm 运行时一致；旧的 16-alpine 配置会在构建前明确报错。ECR 的 16-bookworm 标签已确认有 Linux/amd64 manifest，实际组合镜像仍待云效验证。当前命令为：
 
 ```bash
 set -euo pipefail
 export COMMIT_SHA=$(git rev-parse HEAD)
 export PYTHON_BUILD_IMAGE=public.ecr.aws/docker/library/python:3.12-slim-bookworm
 export NODE_BUILD_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim
-export POSTGRES_TEST_IMAGE=public.ecr.aws/docker/library/postgres:16-alpine
+export POSTGRES_TEST_IMAGE=public.ecr.aws/docker/library/postgres:16-bookworm
 export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 bash deploy/build-flow.sh
 ```
 
-构建包包含 tar.gz、SHA256 校验文件、manifest、匹配该提交的 release-native.sh 和 stage_native_artifact.py；不在业务服务器执行 Node 构建。脚本拒绝 COMMIT_SHA 与实际检出提交不一致、已修改的跟踪构建输入或已存在 artifacts 路径；重跑应使用新的干净工作区。工具镜像在每次 Flow 构建服务中生成，无需发布至 ACR。若 runner 已具备 Python 3.12+、Node 20+ 和 Docker/Compose，仍可使用 `bash deploy/build-native.sh`，两条入口复用同一制品打包模块。
+构建包包含 tar.gz、SHA256 校验文件、manifest、匹配该提交的 release-native.sh 和 stage_native_artifact.py；不在业务服务器执行 Node 构建。脚本拒绝 COMMIT_SHA 与实际检出提交不一致、已修改的跟踪构建输入或已存在 artifacts 路径；重跑应使用新的干净工作区。导出镜像只在构建环境使用，无需发布至 ACR。若 runner 已具备 Python 3.12+、Node 20+ 和完整 Docker/Compose，仍可使用 `bash deploy/build-native.sh`，两条入口复用同一制品打包模块。
 
 在“构建物上传”中选择 artifacts 目录，勾选“制品中包含打包路径的目录”，归档至云效公共存储空间，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[构建物上传参数](https://help.aliyun.com/zh/yunxiao/user-guide/python-test-build)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织配置并实际演练。
 
-原生控制流程检查入口为 `python3 deploy/test-native-release.py`，容器入口在工具镜像构建时执行该检查。该工具要求 Linux 和 Python 3.12+；以 root 运行时会复制测试源码到临时目录，再通过 runuser/nobody 降权执行。当前源码的 28 项检查包含真实临时文件打包/校验和外层归档接收，以及用模拟 Git/Docker、pip、迁移、systemctl 和 HTTP 命令检查构建失败停止、成功切换、失败回退、归档路径/链接拒绝与并发锁；不调用真实 Docker 服务、生产服务或业务数据库。此控制流程检查不能代替真实 Flow 构建、主机部署和生产回滚验收。
+原生控制流程检查入口为 `python3 deploy/test-native-release.py`，新版容器在后端检查阶段执行。该工具要求 Linux 和 Python 3.12+；以 root 运行时复制测试源码到临时目录，再通过 runuser/nobody 降权执行。当前源码的 29 项检查包含真实临时文件打包/校验和外层归档接收，以及用模拟 Git/Docker、pip、迁移、systemctl 和 HTTP 命令检查构建失败停止、成功切换、失败回退、归档路径/链接拒绝与并发锁。模拟 Docker 客户端拒绝 Compose/network/create/cp/inspect 等操作，检查新的宿主导出流程不会依赖它们。此控制流程检查不调用真实 Docker 或业务数据库，不能代替真实 Flow 构建、主机部署和生产回滚验收。
+
+数据库脚本可通过 `python deploy/verify-flow-postgres.py` 单独检查：先检查服务器内存余量，再用新的数据目录/随机端口运行临时 PostgreSQL 16 及上传的测试源码。已实测版本 160015，14 项接口/迁移检查通过且零跳过；不使用线上数据库，也不切换 current。该结果证明脚本逻辑，不能代替 Flow 中新的组合镜像构建。
 
 构建产物同时包含 stage_native_artifact.py，作为主机部署入口。将本次 Flow 运行下载的可信制品解压后，对包含 manifest.json 的 artifacts 目录执行 `python3 <解压目录>/artifacts/stage_native_artifact.py <解压目录>/artifacts`。入口要求完整提交 SHA、准确的归档名称、manifest/校验文件/实际归档的 SHA-256 一致，以及同包内的 release-native.sh；若部署任务传入 COMMIT_SHA，还必须与该次制品一致。失败在复制/发布前停止，校验通过后将归档及校验文件原子放入 `/opt/vueblog/incoming`，调用该包附带的发布脚本。可加 `--verify-only` 仅检查而不复制或部署。该入口只用于可信 Flow 制品，不提供对任意来源脚本的授权保证。
 
@@ -94,4 +100,4 @@ export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 
 发布脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 
-**当前验证边界**：原生流水线脚本仅作准备，尚未在 Flow 运行，也未在生产执行新版发布/故障回滚演练。服务器上的首次部署仍由 install-native.sh 完成。接入账号后需在测试环境完成流水线与回滚验收，再切换正式发布方式。两种方案只能选定一种用于同一服务，避免相互覆盖。
+**当前验证边界**：旧版 Flow 已实际运行，后端镜像成功构建，但 Compose 网络操作被拒绝，未生成发布包。新版多阶段构建修复、真正的 Flow PostgreSQL 检查/前端构建/制品导出、主机发布和故障回滚仍待云效实测。服务器上的首次部署仍由 install-native.sh 完成。两种发布方案只能选定一种用于同一服务，避免相互覆盖。

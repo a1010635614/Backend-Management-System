@@ -1,0 +1,57 @@
+ARG PYTHON_BUILD_IMAGE=python:3.12-slim-bookworm
+ARG NODE_BUILD_IMAGE=node:22-bookworm-slim
+ARG POSTGRES_TEST_IMAGE=postgres:16-bookworm
+
+FROM ${PYTHON_BUILD_IMAGE} AS python-runtime
+
+# Both official images use Debian bookworm. Keep the database and Python in one
+# build container so Flow does not need Compose or Docker network-management APIs.
+FROM ${POSTGRES_TEST_IMAGE} AS checks
+COPY --from=python-runtime /usr/local/ /usr/local/
+ENV PATH=/usr/local/bin:$PATH
+RUN test "$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")" = bookworm \
+    && rm -f /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       bash util-linux ca-certificates libbluetooth3 libbz2-1.0 libdb5.3 \
+       libexpat1 libffi8 libgdbm6 libgdbm-compat4 liblzma5 libncursesw6 \
+       libreadline8 libsqlite3-0 libssl3 libuuid1 zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && ldconfig \
+    && python3 -c "import sys,ssl,sqlite3,bz2,lzma,ctypes; assert sys.version_info[:2] == (3,12)"
+COPY deploy/ /checks/
+RUN python3 /checks/test-native-release.py
+WORKDIR /app
+ARG PYTHON_PACKAGE_INDEX=https://pypi.org/simple
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir --index-url "$PYTHON_PACKAGE_INDEX" -r requirements.txt
+COPY backend/app ./app
+COPY backend/alembic.ini ./
+COPY backend/migrations ./migrations
+COPY backend/tests ./tests
+RUN bash /checks/test-flow-postgres.sh \
+    && mkdir /validation && touch /validation/backend-ok
+
+FROM ${NODE_BUILD_IMAGE} AS frontend
+# Establish a dependency on the successful backend checks before running Node.
+COPY --from=checks /validation/backend-ok /validation/backend-ok
+WORKDIR /frontend
+COPY frontend/ ./
+RUN npm ci && npm run build
+
+FROM python-runtime AS package
+WORKDIR /workspace
+ENV PYTHONPATH=/packager
+COPY backend/app ./backend/app
+COPY backend/migrations ./backend/migrations
+COPY backend/tests ./backend/tests
+COPY backend/alembic.ini backend/requirements.txt ./backend/
+COPY --from=frontend /frontend/dist ./frontend/dist
+COPY deploy/release-native.sh deploy/stage_native_artifact.py ./deploy/
+COPY deploy/package_native.py deploy/stage_native_artifact.py /packager/
+ARG COMMIT_SHA
+RUN COMMIT_SHA="$COMMIT_SHA" python -c "import os; from pathlib import Path; from package_native import create_package; from stage_native_artifact import verify; verify(create_package(Path.cwd(),os.environ['COMMIT_SHA']),os.environ['COMMIT_SHA'])"
+
+FROM python-runtime AS artifact
+COPY --from=package /workspace/artifacts /artifacts
+CMD ["tar", "-C", "/artifacts", "-czf", "-", "."]

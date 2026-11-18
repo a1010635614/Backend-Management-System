@@ -4,6 +4,16 @@
 
 ### 2026-11-18 继续准备
 
+#### Compose 网络操作被 Flow 拒绝，改为同容器数据库检查
+
+用户提供明确终态：23:18:52 后端镜像内 14 项检查为 OK(skipped=1)，23:18:55 镜像导出成功后报 Error response from daemon: flow not support，清理又报 failed to list networks，步骤 exit 1。此前只证明镜像构建/SQLite 检查，不能记录为 PostgreSQL 集成通过或已有制品。
+
+新版 build-flow.sh 仅使用 Docker info/build/run 和宿主 tar。Dockerfile.flow-build 通过官方 Python 3.12 与 PostgreSQL 16-bookworm 的同发行版运行时组合，在一个构建环境内执行真实数据库迁移/全部检查（零跳过），再依赖该结果构建 Node 前端并打包校验。通过本地导出镜像的 tar stdout 传出制品，完整成功才将临时目录改名为 artifacts；不再调用 Compose、Docker 网络管理、create/cp/inspect。旧 Dockerfile.flow-tools 已由新文件替换，完整 runner 的原 Compose 选项保留不变。
+
+已在 Linux nobody 下通过 29 项控制流程/打包检查；其中模拟客户端只支持 info/build/run，显式拒绝其他操作。22 个 Bash 语法检查通过。另已实跑新的 test-flow-postgres.sh：启动全新临时 PostgreSQL 16.15 集群（SHOW version_num=160015），迁移及结构检查通过，14 项业务检查全部通过、零跳过；检查前 MemAvailable=390MiB，数据目录/端口与生产独立，脚本结束自动停止清理。该原生验证不代替 Flow 新组合镜像实测。
+
+ECR 官方 postgres:16-bookworm manifest 已验证 HTTP 200，包含 Linux/amd64；新命令需将旧 16-alpine 改为 16-bookworm，并继续设置阿里云 HTTPS Python 包源。镜像本体、前端构建与导出仍待新的 Flow 运行。源码同步状态以之后明确远程 SHA 为准。
+
 #### 完整构建慢在 PyPI，增加可选 HTTPS 包源
 
 用户补充至 22:45:13 的日志：SQLAlchemy 3.2MB 下载用了约 4 分钟（12.7kB/s），随后仍在下载其他 wheel，未见该段报错。已确认属于持续推进的依赖下载阶段，未停止或重启该实例；完整数据库/前端构建与制品仍无终态证据。

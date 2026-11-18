@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Flow's AliLinux task only needs Bash, Git, Docker and Compose on the host.
-# Source is streamed from the exact commit; no host paths or credentials are mounted.
+# Flow only needs Bash, Git, Docker and tar; no Compose/network-management APIs.
 set -euo pipefail
 : "${COMMIT_SHA:?Set COMMIT_SHA to the full checked-out source commit}"
 [[ "$COMMIT_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo 'A full commit SHA is required'; exit 2; }
@@ -12,52 +11,33 @@ if [[ -e artifacts || -L artifacts ]]; then
     exit 2
 fi
 docker info >/dev/null
-docker compose version
-
-containers=()
+command -v tar >/dev/null
+export_dir=''
 cleanup() {
     result=$?
     trap - EXIT
-    if ((${#containers[@]})); then
-        docker rm --force "${containers[@]}" >/dev/null || echo "Could not remove this build's temporary containers" >&2
-    fi
+    case "$export_dir" in "$PWD"/.flow-export.*) rm -rf -- "$export_dir";; esac
     exit "$result"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-start_checked() {
-    docker start --attach "$1"
-    state=$(docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' "$1")
-    if [[ "$state" != 'exited 0' ]]; then
-        printf 'Build container did not finish successfully: %s\n' "$state" >&2
-        return 1
-    fi
-}
-
 python_image="${PYTHON_BUILD_IMAGE:-python:3.12-slim-bookworm}"
 node_image="${NODE_BUILD_IMAGE:-node:22-bookworm-slim}"
-postgres_image="${POSTGRES_TEST_IMAGE:-postgres:16-alpine}"
+postgres_image="${POSTGRES_TEST_IMAGE:-postgres:16-bookworm}"
 package_index="${PYTHON_PACKAGE_INDEX:-https://pypi.org/simple}"
-tools_image="vueblog-flow-tools:${COMMIT_SHA}"
-git archive "${COMMIT_SHA}:deploy" | docker build --tag "$tools_image" --build-arg "PYTHON_BUILD_IMAGE=$python_image" --file Dockerfile.flow-tools -
-PYTHON_BUILD_IMAGE="$python_image" POSTGRES_TEST_IMAGE="$postgres_image" PYTHON_PACKAGE_INDEX="$package_index" bash deploy/test-postgres.sh
-
-web=$(docker create --workdir /frontend "$node_image" sh -c 'npm ci && npm run build')
-[[ "$web" =~ ^[a-f0-9]{64}$ ]] || { echo 'Docker did not return a container ID'; exit 1; }
-containers+=("$web")
-git archive "$COMMIT_SHA" frontend | docker cp - "$web:/"
-start_checked "$web"
-
-package=$(docker create --env "COMMIT_SHA=$COMMIT_SHA" "$tools_image")
-[[ "$package" =~ ^[a-f0-9]{64}$ ]] || { echo 'Docker did not return a container ID'; exit 1; }
-containers+=("$package")
-git archive "$COMMIT_SHA" \
-    backend/app backend/migrations backend/tests backend/alembic.ini backend/requirements.txt \
-    deploy/release-native.sh deploy/stage_native_artifact.py | docker cp - "$package:/workspace/"
-docker cp "$web:/frontend/dist/." - | docker cp - "$package:/workspace/frontend/dist/"
-start_checked "$package"
-mkdir artifacts
-docker cp "$package:/workspace/artifacts/." artifacts/
+case "$postgres_image" in *alpine*) echo 'Flow checks need postgres:16-bookworm; update POSTGRES_TEST_IMAGE'; exit 2;; esac
+artifact_image="vueblog-flow-artifacts:${COMMIT_SHA}"
+git archive "$COMMIT_SHA" | docker build --tag "$artifact_image" --file deploy/Dockerfile.flow-build \
+    --build-arg "PYTHON_BUILD_IMAGE=$python_image" --build-arg "NODE_BUILD_IMAGE=$node_image" \
+    --build-arg "POSTGRES_TEST_IMAGE=$postgres_image" --build-arg "PYTHON_PACKAGE_INDEX=$package_index" \
+    --build-arg "COMMIT_SHA=$COMMIT_SHA" -
+export_dir=$(mktemp -d "$PWD/.flow-export.XXXXXXXX")
+docker run --rm "$artifact_image" | tar -xzf - -C "$export_dir"
+for filename in manifest.json "blog-$COMMIT_SHA.tar.gz" "blog-$COMMIT_SHA.tar.gz.sha256" release-native.sh stage_native_artifact.py; do
+    [[ -f "$export_dir/$filename" && ! -L "$export_dir/$filename" ]] || { echo 'Incomplete artifact export'; exit 1; }
+done
+mv "$export_dir" artifacts
+export_dir=''
 printf 'Native artifact ready for commit %s in artifacts/\n' "$COMMIT_SHA"

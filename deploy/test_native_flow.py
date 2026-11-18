@@ -1,4 +1,4 @@
-"""Check Flow failure gates with fake clients; this does not validate a Docker daemon."""
+"""Check export failure gates with a client that rejects Compose/network APIs."""
 import json
 import os
 from pathlib import Path
@@ -10,10 +10,12 @@ import unittest
 
 
 CLIENT = r'''
+import io
 import json
 import os
 from pathlib import Path
 import sys
+import tarfile
 
 args = sys.argv[1:]
 failure = os.environ.get('FLOW_TEST_FAILURE', '')
@@ -24,25 +26,28 @@ if Path(sys.argv[0]).name == 'git':
     elif args[:1] == ['archive']: sys.stdout.buffer.write(b'fake source stream')
     else: raise SystemExit(98)
     raise SystemExit(0)
-
 with open(os.environ['FLOW_TEST_DOCKER_LOG'], 'a') as log:
     log.write(json.dumps(args) + '\n')
 if args[0] == 'info': raise SystemExit(1 if failure == 'daemon' else 0)
-elif args[0] == 'compose': pass
-elif args[0] == 'build': sys.stdin.buffer.read()
-elif args[0] == 'create': print(('a' if any('node:' in value for value in args) else 'b') * 64)
-elif args[0] == 'start': pass  # Client success must not hide a failed container process.
-elif args[0] == 'inspect':
-    failed = (failure == 'frontend' and args[-1] == 'a' * 64) or (failure == 'package' and args[-1] == 'b' * 64)
-    print('exited 42' if failed else 'exited 0')
-elif args[0] == 'cp':
-    if args[1] == '-': sys.stdin.buffer.read()
-    if args[-1] == '-':
-        if failure == 'dist-stream': raise SystemExit(1)
-        sys.stdout.buffer.write(b'fake dist stream')
-    if args[-1] == 'artifacts/': Path('artifacts/fixture').write_text('copied')
-elif args[0] == 'rm': pass
-else: raise SystemExit(98)
+elif args[0] == 'build':
+    sys.stdin.buffer.read()
+    raise SystemExit(1 if failure == 'build' else 0)
+elif args[0] == 'run':
+    if failure == 'corrupt-stream':
+        sys.stdout.buffer.write(b'not an archive')
+        raise SystemExit(0)
+    commit = 'c' * 40
+    names = ['manifest.json', 'blog-' + commit + '.tar.gz', 'blog-' + commit + '.tar.gz.sha256',
+             'release-native.sh', 'stage_native_artifact.py']
+    if failure == 'missing-file': names.remove('stage_native_artifact.py')
+    with tarfile.open(fileobj=sys.stdout.buffer, mode='w|gz') as archive:
+        for name in names:
+            member = tarfile.TarInfo(name);member.size = 7
+            archive.addfile(member, io.BytesIO(b'fixture'))
+    raise SystemExit(42 if failure == 'export-exit' else 0)
+else:
+    print('flow not support: ' + args[0], file=sys.stderr)
+    raise SystemExit(98)
 '''
 
 
@@ -52,81 +57,80 @@ class FlowBuildControlTests(unittest.TestCase):
         self.work = tempfile.TemporaryDirectory()
         self.addCleanup(self.work.cleanup)
         self.root = Path(self.work.name)
-        self.bin = self.root / 'bin'
-        self.bin.mkdir()
+        self.bin = self.root / 'bin';self.bin.mkdir()
         for name in ('git', 'docker'):
             path = self.bin / name
             path.write_text('#!' + sys.executable + '\n' + CLIENT)
             path.chmod(0o755)
-        deploy = self.root / 'deploy'
-        deploy.mkdir()
+        deploy = self.root / 'deploy';deploy.mkdir()
         shutil.copyfile(Path(__file__).with_name('build-flow.sh'), deploy / 'build-flow.sh')
-        (deploy / 'test-postgres.sh').write_text('if [[ "${FLOW_TEST_FAILURE:-}" == postgres ]]; then exit 7; fi\nprintf "%s\\n%s\\n%s\\n" "$PYTHON_BUILD_IMAGE" "$POSTGRES_TEST_IMAGE" "$PYTHON_PACKAGE_INDEX" > postgres-images.txt\n')
         self.log = self.root / 'docker.jsonl'
 
-    def run_build(self, failure='', images=None):
+    def run_build(self, failure='', settings=None):
         env = {**os.environ, 'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
-               'COMMIT_SHA': 'c' * 40, 'FLOW_TEST_FAILURE': failure, 'FLOW_TEST_DOCKER_LOG': str(self.log)}
-        env.update(images or {})
+               'COMMIT_SHA': 'c' * 40, 'FLOW_TEST_FAILURE': failure, 'FLOW_TEST_DOCKER_LOG': str(self.log),
+               'PYTHON_BUILD_IMAGE': 'python:3.12-slim-bookworm', 'NODE_BUILD_IMAGE': 'node:22-bookworm-slim',
+               'POSTGRES_TEST_IMAGE': 'postgres:16-bookworm', 'PYTHON_PACKAGE_INDEX': 'https://pypi.org/simple'}
+        env.update(settings or {})
         result = subprocess.run(['bash', 'deploy/build-flow.sh'], cwd=self.root, env=env,
                                 text=True, capture_output=True, timeout=30)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
         return result, calls
 
-    def assert_no_artifact(self):
+    def assert_no_export(self):
         self.assertFalse((self.root / 'artifacts').exists())
+        self.assertEqual(list(self.root.glob('.flow-export.*')), [])
 
-    def test_unavailable_daemon_stops_before_build_or_container_creation(self):
+    def test_unavailable_daemon_stops_before_build(self):
         result, calls = self.run_build('daemon')
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(calls, [['info']])
-        self.assert_no_artifact()
+        self.assert_no_export()
 
-    def test_database_failure_stops_before_frontend_and_packaging(self):
-        result, calls = self.run_build('postgres')
+    def test_build_failure_prevents_export(self):
+        result, calls = self.run_build('build')
         self.assertNotEqual(result.returncode, 0)
-        self.assertFalse(any(call[0] == 'create' for call in calls))
-        self.assert_no_artifact()
+        self.assertNotIn('run', [call[0] for call in calls])
+        self.assert_no_export()
 
-    def test_frontend_process_failure_is_detected_even_when_start_returns_success(self):
-        result, calls = self.run_build('frontend')
+    def test_failed_exporter_exit_is_detected_even_with_complete_tar_stream(self):
+        result, _ = self.run_build('export-exit')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(sum(call[0] == 'create' for call in calls), 1)
-        self.assertEqual(calls[-1], ['rm', '--force', 'a' * 64])
-        self.assert_no_artifact()
+        self.assert_no_export()
 
-    def test_package_process_failure_prevents_artifact_export_and_removes_owned_containers(self):
-        result, calls = self.run_build('package')
+    def test_corrupt_tar_stream_never_publishes_partial_artifact(self):
+        result, _ = self.run_build('corrupt-stream')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(calls[-1], ['rm', '--force', 'a' * 64, 'b' * 64])
-        self.assert_no_artifact()
+        self.assert_no_export()
 
-    def test_failed_dist_stream_stops_before_package_start(self):
-        result, calls = self.run_build('dist-stream')
+    def test_missing_required_file_stops_before_export_is_published(self):
+        result, _ = self.run_build('missing-file')
         self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn(['start', '--attach', 'b' * 64], calls)
-        self.assertEqual(calls[-1], ['rm', '--force', 'a' * 64, 'b' * 64])
-        self.assert_no_artifact()
+        self.assert_no_export()
 
-    def test_success_exports_artifact_and_only_removes_created_containers(self):
+    def test_success_uses_only_supported_build_and_run_operations(self):
         result, calls = self.run_build()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual((self.root / 'artifacts/fixture').read_text(), 'copied')
-        self.assertEqual(calls[-1], ['rm', '--force', 'a' * 64, 'b' * 64])
+        self.assertEqual([call[0] for call in calls], ['info', 'build', 'run'])
+        self.assertEqual(len(list((self.root / 'artifacts').iterdir())), 5)
+        self.assertEqual(list(self.root.glob('.flow-export.*')), [])
 
-    def test_configured_image_sources_reach_tools_frontend_and_database_checks(self):
-        images = {'PYTHON_BUILD_IMAGE': 'public.ecr.aws/docker/library/python:3.12-slim-bookworm',
-                  'NODE_BUILD_IMAGE': 'public.ecr.aws/docker/library/node:22-bookworm-slim',
-                  'POSTGRES_TEST_IMAGE': 'public.ecr.aws/docker/library/postgres:16-alpine',
-                  'PYTHON_PACKAGE_INDEX': 'https://mirrors.aliyun.com/pypi/simple/'}
-        result, calls = self.run_build(images=images)
+    def test_configured_sources_are_passed_to_the_build(self):
+        settings = {'PYTHON_BUILD_IMAGE': 'public.ecr.aws/docker/library/python:3.12-slim-bookworm',
+                    'NODE_BUILD_IMAGE': 'public.ecr.aws/docker/library/node:22-bookworm-slim',
+                    'POSTGRES_TEST_IMAGE': 'public.ecr.aws/docker/library/postgres:16-bookworm',
+                    'PYTHON_PACKAGE_INDEX': 'https://mirrors.aliyun.com/pypi/simple/'}
+        result, calls = self.run_build(settings=settings)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         build = next(call for call in calls if call[0] == 'build')
-        self.assertIn('PYTHON_BUILD_IMAGE=' + images['PYTHON_BUILD_IMAGE'], build)
-        web = next(call for call in calls if call[0] == 'create')
-        self.assertIn(images['NODE_BUILD_IMAGE'], web)
-        self.assertEqual((self.root / 'postgres-images.txt').read_text().splitlines(),
-                         [images['PYTHON_BUILD_IMAGE'], images['POSTGRES_TEST_IMAGE'], images['PYTHON_PACKAGE_INDEX']])
+        for name, value in settings.items(): self.assertIn(name + '=' + value, build)
+        self.assertIn('COMMIT_SHA=' + 'c' * 40, build)
+
+    def test_old_alpine_setting_fails_before_image_build(self):
+        result, calls = self.run_build(settings={'POSTGRES_TEST_IMAGE': 'postgres:16-alpine'})
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn('build', [call[0] for call in calls])
+        self.assert_no_export()
 
 
 if __name__ == '__main__': unittest.main()
