@@ -76,10 +76,17 @@ def cos_client():
     return CosS3Client(CosConfig(Region=settings.cos_region,SecretId=settings.cos_secret_id,SecretKey=settings.cos_secret_key,Scheme='https'))
 def check_geetest(payload:dict):
     if not settings.geetest_id or not settings.geetest_key: raise HTTPException(503,"极验尚未配置")
-    if not {"lot_number","captcha_output","pass_token","gen_time"}.issubset(payload): raise HTTPException(400,"极验参数不完整")
-    sign=hmac.new(settings.geetest_key.encode(),payload["lot_number"].encode(),sha256).hexdigest()
-    try: data=httpx.post(os.getenv("GEETEST_VERIFY_URL","https://gcaptcha4.geetest.com/validate"),params={"captcha_id":settings.geetest_id},data={**payload,"sign_token":sign},timeout=8).json()
-    except Exception: raise HTTPException(502,"极验服务暂不可用")
+    fields=("lot_number","captcha_output","pass_token","gen_time")
+    if any(not isinstance(payload.get(field),str) or not payload[field].strip() for field in fields):
+        raise HTTPException(400,"极验参数不完整")
+    proof={field:payload[field] for field in fields}
+    sign=hmac.new(settings.geetest_key.encode(),proof["lot_number"].encode(),sha256).hexdigest()
+    try:
+        response=httpx.post(os.getenv("GEETEST_VERIFY_URL","https://gcaptcha4.geetest.com/validate"),params={"captcha_id":settings.geetest_id},data={**proof,"sign_token":sign},timeout=8)
+        if response.status_code!=200: raise ValueError('Unexpected validation status')
+        data=response.json()
+        if not isinstance(data,dict): raise ValueError('Unexpected validation response')
+    except (httpx.HTTPError,ValueError): raise HTTPException(502,"极验服务暂不可用") from None
     if data.get("result")!="success": raise HTTPException(401,"极验校验未通过")
 @app.get("/api/health")
 def health(db:Session=Depends(get_db)):
@@ -130,7 +137,7 @@ def create_post(body:PostIn,user:User=Depends(admin_user),db:Session=Depends(get
 @app.post("/api/auth/email/send",status_code=202)
 def send_code(body:EmailIn,db:Session=Depends(get_db)):
     if not settings.mail_host: raise HTTPException(503,"邮件服务尚未配置")
-    if settings.geetest_id: check_geetest(body.geetest)
+    if settings.geetest_id or settings.geetest_key: check_geetest(body.geetest)
     # PostgreSQL 事务级锁覆盖该邮箱的检查、邮件发送和提交，避免并发重复发信。
     if db.bind.dialect.name=="postgresql":
         from sqlalchemy import text

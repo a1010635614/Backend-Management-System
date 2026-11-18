@@ -2,7 +2,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 from urllib.parse import urlparse,parse_qs
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -117,10 +117,52 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/uploads/presign',json={'filename':'x.svg','contentType':'image/svg+xml','size':10},headers=admin).status_code,400)
 
     def test_geetest_failure_blocks_smtp(self):
-        with patch.multiple(settings,geetest_id='id',geetest_key='key',mail_host='smtp.example.com'),patch('app.main.httpx.post',return_value=Mock(json=lambda:{'result':'fail'})),patch('smtplib.SMTP') as smtp:
+        import httpx
+        with patch.multiple(settings,geetest_id='id',geetest_key='key',mail_host='smtp.example.com'),patch('app.main.httpx.post',return_value=httpx.Response(200,json={'result':'fail'})),patch('smtplib.SMTP') as smtp:
             result=self.client.post('/api/auth/email/send',json={'email':'admin@example.com','geetest':{'lot_number':'lot','captcha_output':'output','pass_token':'pass','gen_time':'1'}})
             self.assertEqual(result.status_code,401)
             smtp.assert_not_called()
+
+    def test_geetest_success_uses_server_credentials_before_email_login(self):
+        import hmac
+        import httpx
+        import re
+        proof={'lot_number':'lot','captcha_output':'output','pass_token':'pass','gen_time':'1'}
+        with patch.multiple(settings,geetest_id='server-scene',geetest_key='server-key',mail_host='smtp.example.com',mail_port=587),patch('app.main.httpx.post',return_value=httpx.Response(200,json={'result':'success'})) as provider,patch('smtplib.SMTP') as smtp:
+            self.assertEqual(self.client.get('/api/auth/config').json(),{'captchaId':'server-scene'})
+            response=self.client.post('/api/auth/email/send',json={'email':'mail@example.com','geetest':{**proof,'captcha_id':'client-scene','sign_token':'client-signature','extra':'ignored'}})
+            self.assertEqual(response.status_code,202,response.text)
+            self.assertEqual(provider.call_args.kwargs['params'],{'captcha_id':'server-scene'})
+            self.assertEqual(provider.call_args.kwargs['data'],{**proof,'sign_token':hmac.new(b'server-key',b'lot',sha256).hexdigest()})
+            message=smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+            code=re.search(r'\b\d{6}\b',message.get_content()).group()
+            self.assertEqual(self.client.post('/api/auth/email/verify',json={'email':'mail@example.com','code':code}).status_code,200)
+
+    def test_geetest_bad_proofs_and_provider_errors_never_send_email(self):
+        import httpx
+        from sqlalchemy import select,func
+        proof={'lot_number':'lot','captcha_output':'output','pass_token':'pass','gen_time':'1'}
+        with patch.multiple(settings,geetest_id='scene',geetest_key='server-key',mail_host='smtp.example.com'),patch('smtplib.SMTP') as smtp,patch('smtplib.SMTP_SSL') as secure:
+            with patch('app.main.httpx.post') as provider:
+                for invalid in ({},{**proof,'lot_number':''},{**proof,'captcha_output':' '}):
+                    self.assertEqual(self.client.post('/api/auth/email/send',json={'email':'mail@example.com','geetest':invalid}).status_code,400)
+                provider.assert_not_called()
+            cases=[httpx.Response(503,json={'result':'success'}),httpx.Response(202,json={'result':'success'}),httpx.Response(200,json=[]),httpx.Response(200,text='private upstream error')]
+            for response in cases:
+                with self.subTest(status=response.status_code,body=response.text),patch('app.main.httpx.post',return_value=response):
+                    result=self.client.post('/api/auth/email/send',json={'email':'mail@example.com','geetest':proof})
+                    self.assertEqual(result.status_code,502)
+                    self.assertNotIn('private upstream error',result.text)
+            with patch('app.main.httpx.post',side_effect=httpx.ReadTimeout('private connection details')):
+                result=self.client.post('/api/auth/email/send',json={'email':'mail@example.com','geetest':proof})
+                self.assertEqual(result.status_code,502)
+                self.assertNotIn('private connection details',result.text)
+            with patch.object(settings,'geetest_id',''),patch('app.main.httpx.post') as provider:
+                self.assertEqual(self.client.post('/api/auth/email/send',json={'email':'mail@example.com','geetest':proof}).status_code,503)
+                provider.assert_not_called()
+            smtp.assert_not_called();secure.assert_not_called()
+        with SessionLocal() as db:
+            self.assertEqual(db.scalar(select(func.count(Code.id))),0)
 
     def test_mail_delivery_then_verify(self):
         import re

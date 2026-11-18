@@ -22,6 +22,14 @@ def credentials():
     try: return CredentialDialog(root,title='Blog COS configuration').result
     finally: root.destroy()
 
+def retry_after_fix(report):
+    import tkinter as tk
+    from tkinter import messagebox
+    root=tk.Tk();root.withdraw();root.attributes('-topmost',True)
+    try:
+        return messagebox.askretrycancel('COS verification failed',report+'\n\nIf you have corrected the account permissions, choose Retry to reuse the in-memory credentials.\nTo change credentials, choose Cancel and run the setup again.',parent=root)
+    finally: root.destroy()
+
 def main():
     subprocess.run([sys.executable,str(ROOT/'deploy/setup_ssh.py'),'--verify-host'],check=True)
     values=credentials()
@@ -32,11 +40,17 @@ def main():
     program=(ROOT/'deploy/configure_cos_remote.py').read_text(encoding='utf-8')
     bootstrap="_helpers={'__name__':'cos_config_helpers'}\nexec("+repr(helper)+",_helpers)\nserialize_environment=_helpers['serialize_environment']\nreplace_file=_helpers['replace_file']\n"+program
     print('Verifying COS read/write, private access, and CORS; credentials are not logged.',flush=True)
-    result=subprocess.run(ssh_arguments()+['/opt/vueblog/venv/bin/python -c '+shlex.quote(bootstrap)],input=json.dumps({'secret_id':values[0],'secret_key':values[1]}),text=True,capture_output=True,timeout=150)
-    report=result.stdout+result.stderr
-    log=ROOT/'.local/cos-setup-status.log';log.parent.mkdir(exist_ok=True);log.write_text(report,encoding='utf-8')
-    print(report,end='',flush=True)
-    if result.returncode: raise SystemExit('COS setup did not finish. Do not share credentials in error reports.')
+    log=ROOT/'.local/cos-setup-status.log';log.parent.mkdir(exist_ok=True)
+    log.write_text('COS setup started. Credentials are never logged.\n',encoding='utf-8')
+    for attempt in range(1,4):
+        result=subprocess.run(ssh_arguments()+['/opt/vueblog/venv/bin/python -c '+shlex.quote(bootstrap)],input=json.dumps({'secret_id':values[0],'secret_key':values[1]}),text=True,capture_output=True,timeout=150)
+        report=result.stdout+result.stderr
+        with log.open('a',encoding='utf-8') as output: output.write(f'Attempt {attempt}\n'+report)
+        print(report,end='',flush=True)
+        if not result.returncode: return
+        if attempt==3 or not retry_after_fix(report): break
+        print('Retrying after account/permission correction...',flush=True)
+    raise SystemExit('COS setup did not finish. Do not share credentials in error reports.')
 
 if __name__=='__main__':
     try: main()

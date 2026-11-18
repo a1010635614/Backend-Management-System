@@ -4,7 +4,45 @@
 
 ### 2026-11-18 继续准备
 
+#### 百度统计 ID 已配置，等待报告验收
+
+用户已提供公开 hm.js 跟踪 ID，configure_baidu.py 进程 session 60804 以 exit 0 结束：仅 BAIDU_HM_ID 被更新，服务健康与 /api/public/config 匹配检查通过。已请求用户通过新的无痕窗口同意匿名统计、浏览首页和文章，并在其百度统计账号核对实时访客或今日 PV/UV；目前等待反馈。配置成功不证明百度后台已经采集到访问数据，不能标记整项完成。
+
+#### 极验 4.0 真实登录验收通过
+
+用户通过 Blog GeeTest configuration 遮罩窗口输入 ID/Key，配置进程 session 31553 已以 exit 0 结束。服务器 GEETEST_ID/GEETEST_KEY 已配置，API 健康与公开 captcha ID 匹配检查通过。随后用户明确反馈“极验通过，收到邮件并登录成功”，当前本机预览使用真实服务器后端的极验→邮件→后台登录流程验收通过。凭据未写入本机文件、日志、命令参数或 Git。仅配置/健康检查时的待验收状态已被实际登录反馈取代。
+
+新增 configure_geetest.py / configure_geetest_remote.py：本机遮罩输入、严格 SSH 连接、32 位输入检查、只更新极验字段、原子配置写入、重启及健康/ID 核对，失败恢复原配置。5 项极验配置测试通过，连同原邮件配置测试共 7 项通过。尚未在真实凭据配置中制造故障以验证回退，只能按自动化覆盖范围描述。
+
+后端二次校验新增非 200 状态及非对象 JSON 拒绝、空验证参数检查、只向极验转发四项必要证明与服务器签名；部分配置也会阻止发码。模拟完整极验→邮件验证码→登录、异常响应不得发送邮件的回归已通过。最新服务器独立 PostgreSQL 测试库的 14 项回归全部通过，迁移一致性检查通过；随后通过正常原生发布安装校验修正，HTTPS/API 健康和三个服务状态通过。
+
+本次发布前备份 blog-20261118T112858Z.dump 已在独立临时库恢复并自动清理，schema 0002；恢复文章 2、用户 1、事件 28、验证码记录 2、附件 2，生产数据未改。备份恢复脚本补充 assets 表检查。异地备份仍未准备。
+
+新增 BAIDU-SETUP.md、configure_baidu.py / configure_baidu_remote.py，仅更新 BAIDU_HM_ID，核对公开配置并在失败时恢复环境。百度配置的字段保留/回退和错误 ID 测试通过；连同极验与邮件共 9 项配置测试通过。用户随后已提供真实 ID 并安装成功，当前报告验收状态见上方最新记录，不能把一方统计代替百度接入完成。
+
+#### 最新验收与下一步
+
+COS 图片/PDF 端到端验收通过。用户明确反馈“图片和 PDF 都上传成功且能打开”；随后只读核对数据库：ready image/png 1、ready application/pdf 1，文章关联附件也分别为 1。CORS 对 content-type、content-length 的 PUT 预请求已返回 200 并允许相应请求头。此前尚未配置密钥、AccessDenied、CORS 未就绪和未收到浏览器验收的记录均为下方联调历史，不代表当前状态。
+
+真实私有桶上传、HEAD 元数据、短时签名下载和匿名读取拒绝已通过；凭据仅保存在服务器。邮件收码与管理员登录此前亦已实际验收。COS 验收范围为当前私有预览 Origin 的图片/PDF 上传、文章保存和附件打开；CDN、STS、内容扫描和生产网站 Origin 的跨域配置仍未验收。
+
+极验账号准备指引见 deploy/GEETEST-SETUP.md；用户最初尚未创建，随后已准备并配置，当前状态以上方最新记录为准。百度统计、云效、ACR、飞书、CDN、异地备份及真实发布回滚仍需准备和联调。ICP 按用户要求暂缓，证书续期演练此前失败，完整上线目标继续保持未完成。
+
+Git 最近核对：本地提交 33f7ab8，远程 main 最近已验证提交为 d7bc812；本轮验收记录和 COS 诊断改动仍在工作区，尚未推送。服务保持运行。
+
 #### COS 私有附件进展
+
+##### COS 联调历史（当前状态以上方最新验收为准）
+
+用户保存 CORS 后，OPTIONS（Origin http://127.0.0.1:5173，请求方法 PUT，请求头 content-type）实测 200，Allow-Origin 精确匹配且 PUT/GET/HEAD 已允许。响应 Allow-Headers 为 content-type,`content-length`，第二项仍带反引号，已提醒用户改为纯文本 Content-Length；不能把完整规则清理视为已完成。已启动本机 Vite session 32564（5173）及 SSH 隧道 session 84342（8000），供用户在真实服务器环境进行浏览器图片/PDF 上传、保存文章与展示验收。后续需以实际端口/进程复核；当前尚未收到页面上传成功反馈。
+
+用户明确说明此前上海策略没有保存，随后提供已保存的正确 ap-shanghai/uploads/* 资源。重新配置进程 session 53172 已以 exit 0 结束：真实 COS PutObject、HEAD 元数据、短时签名下载、无签名读取403全部通过；SecretId/SecretKey 已原子保存到服务器，服务重启和 API 健康检查通过。此前“未配置凭据/AccessDenied未解决”的记录已被本次成功结果取代，现不需要重新索取密钥。
+
+目前唯一已明确的 COS 浏览器阻塞是 CORS：用户要求了详细控制台指引，已提供；最新 OPTIONS 复测仍返回403/AccessForbidden且没有 Access-Control 响应头。待用户在 COS 控制台保存来源 http://127.0.0.1:5173 的 PUT/GET/HEAD 规则后复测。测试对象 uploads/verification/090f23e3a979b5e654bdb53ae4e9696d.png 保持私有供检查。浏览器上传、文章附件展示尚未验收，不可把整个 COS 功能标记完成。本机 5173/8000 当前无监听，待 CORS 通过后再启动私有预览和隧道。
+
+新的 COS 配置进程 session 31688 已终止：三次尝试均在 PutObject 返回 status 403/code AccessDenied，没有保存凭据或改动业务配置。用户此前确认策略已关联，但最近提供的可见策略资源仍为 ap-guangzhou；尚未获得保存后的上海策略资源证据。已请求只提供当前已保存的 resource 字符串（不要密钥）。匿名 HEAD 上海端点403、广州端点404，与上海桶信息一致；不能据此证明身份策略已正确生效。下一步先核对实际生效地域/资源与密钥所属子用户，避免盲目重复输入。诊断程序现在只输出安全错误码及经过字符限制的 RequestId，不输出凭据或签名 URL。
+
+首次真实 COS 配置尝试在 PutObject 阶段返回 403，服务器凭据未改动。用户随后提供其 CAM 策略，资源地域为 ap-guangzhou，而真实桶为 ap-shanghai；已明确指出此资源范围不匹配，要求在腾讯云将策略改为上海地域。建议使用仓库 cos-policy.json 的 uploads/* 范围和 PutObject/HeadObject/GetObject/OptionsObject。新的配置进程已打开遮罩输入窗口（exec session 31688，状态以实际进程为准），增强了安全错误码输出与内存凭据重试，等待用户保存正确策略并输入；不能视为 COS 已接通。
 
 最小权限准备已具体化为 deploy/cos-policy.json：目标桶 uploads/* 的 PutObject、HeadObject、GetObject、OptionsObject。根据腾讯云当前 API 授权文档，HEAD 与 OPTIONS 有独立 action，已显式列出，避免遗漏权限导致后续确认失败。新增 cos-cors.json（Python SDK 配置格式）与 COS-SETUP.md，说明在控制台配置精确本机 Origin 与请求头，且不需要为应用账号授予修改桶权限。JSON 语法及目标资源范围已检查通过；真正的 CAM 策略关联和 CORS 设置仍需用户在腾讯云执行。当前继续等待受限子账号密钥准备情况，尚未启动 COS 密钥输入窗口或运行真实验证。
 

@@ -1,6 +1,7 @@
 """Called only by configure_cos.py's SSH bootstrap, with environment helpers bound."""
 import base64
 import json
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -43,7 +44,11 @@ def main():
                 cors_ready=False
     except Exception as error:
         code=error.get_status_code() if hasattr(error,'get_status_code') else type(error).__name__
-        raise SystemExit('COS '+phase+' failed ('+str(code)+'); server configuration was not changed. A small verification object may remain under uploads/verification/.') from None
+        detail=error.get_error_code() if hasattr(error,'get_error_code') else type(error).__name__
+        if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}',str(detail)): detail='unclassified'
+        request_id=error.get_request_id() if hasattr(error,'get_request_id') else ''
+        request_note=' RequestId='+str(request_id) if re.fullmatch(r'[A-Za-z0-9+/=_-]{1,160}',str(request_id)) else ''
+        raise SystemExit('COS '+phase+' failed (status '+str(code)+', code '+str(detail)+'); server configuration was not changed.'+request_note+' A small verification object may remain under uploads/verification/.') from None
     print('COS upload, HEAD metadata, signed download, private read: PASS',flush=True)
     try:
         replace_file(envpath,content,owner)

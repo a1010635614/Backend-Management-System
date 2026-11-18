@@ -17,5 +17,6 @@ select count(*) as restored_posts from posts;
 select count(*) as restored_users from users;
 select count(*) as restored_events from analytics_events;
 select count(*) as restored_codes from email_codes;
+select count(*) as restored_assets from assets;
 SQL
 printf 'Restore completed in isolated database; production data was not changed.\n'
