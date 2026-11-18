@@ -12,11 +12,40 @@
 
 ## 当前小内存服务器的原生发布选项
 
-现有服务器运行 Nginx + systemd，后续按原生制品发布接入 Flow。当前方案不需要开通 ACR；上面的 Docker/ACR 方案保留用于以后切换。Flow 构建命令先执行 `export COMMIT_SHA=$(git rev-parse HEAD)`，再执行 `bash deploy/build-native.sh`：runner 执行 PostgreSQL 16 专项回归和前端构建，输出 artifacts 中的 tar.gz、SHA256 校验文件、manifest 和匹配该提交的 release-native.sh；不在服务器执行 Node 构建。构建脚本会拒绝 COMMIT_SHA 与实际检出提交不一致的情况。
+### 构建环境联调
 
-在“构建物上传”中选择 artifacts 目录，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[云效构建物管理](https://help.aliyun.com/zh/yunxiao/user-guide/issues-in-building)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织创建后配置并实际演练。
+2026-11-18 实际 Flow 命令日志确认：工作目录为代码源的 blog，架构 x86_64；`build-steps/alinux3:latest` 中有 Git、Docker 26.1.3 和 Compose v2.27.0，但没有 Node/npm，Python 为 3.6.8。该环境不能直接执行下面需要 Python 3.12+ 和 Node 的原生构建命令。
 
-原生构建首先运行 `python3 deploy/test-native-release.py`。该工具要求 Linux 和 Python 3.12+；以 root 运行时会复制测试源码到临时目录，再通过 runuser/nobody 降权执行。测试模拟 pip、迁移、systemctl 和 HTTP 命令，验证成功切换、失败回退、校验失败、归档路径/链接拒绝与并发锁；不调用真实服务或业务数据库。此控制流程检查不能代替真实主机部署和生产回滚验收。
+后续 Docker 验证在第一条命令即报 `Cannot connect to the Docker daemon at tcp://127.0.0.1:2375`，因此尚未执行 Python/Node 容器，不能认定镜像拉取正常。先在任务设置中查找并启用“开启 Docker Daemon”，保存后发起新运行，再验证：
+
+```bash
+set -e
+docker version
+docker run --rm python:3.12-slim-bookworm python --version
+docker run --rm node:22-bookworm-slim node --version
+```
+
+成功应包含 Docker 的 Client/Server 信息，以及 Python 3.12.x、Node v22.x。官方说明确认公共构建集群提供“开启 Docker Daemon”开关，参见[构建集群说明](https://help.aliyun.com/zh/yunxiao/user-guide/build-a-cluster/)。开关在当前 Region 站的具体位置仍以用户界面为准。仅启用构建任务的 Docker 服务，不需要开放业务服务器的 2375 端口。
+
+21:57 的后续日志已显示 Docker Server，之前的服务连接问题已解决；随后 Python 镜像拉取在 `https://registry-1.docker.io/v2/` 超时，Node 尚未执行。当前指导将任务的构建集群从杭州切换为“云效中国香港构建集群”，保留 Linux/amd64 与 Docker Daemon 开关，保存并新运行相同验证命令。该方案来自[官方 Docker Hub 超时排查](https://help.aliyun.com/zh/yunxiao/user-guide/cloud-effect-pipeline-image-construction-and-push-to-image-warehouse)，实际网络恢复仍待新日志确认。若该集群不可用或仍失败，再评估将官方基础镜像同步至用户自己的 ACR；不使用来源不明的公共代理。
+
+### 原生制品与发布
+
+现有服务器运行 Nginx + systemd，后续按原生制品发布接入 Flow。当前方案不需要开通 ACR；上面的 Docker/ACR 业务镜像方案保留用于以后切换。先完成前述 Docker/镜像验证，然后让本次运行检出包含 `deploy/build-flow.sh` 的最新 main，在代码源工作目录 blog 下执行：
+
+```bash
+set -euo pipefail
+export COMMIT_SHA=$(git rev-parse HEAD)
+bash deploy/build-flow.sh
+```
+
+`build-flow.sh` 只要求任务环境提供 Bash、Git、Docker 和 Compose。它用 Python 3.12 工具镜像执行隔离检查，再执行 PostgreSQL 16 真实集成检查，用 Node 22 容器构建前端，最后输出原生 artifacts 发布包。构建读取指定提交中的跟踪文件，通过 `git archive` 和 `docker cp` 传输，不依赖任务容器与 Docker 服务共享相同宿主机路径，也不挂载密钥或传入生产配置。前端/打包容器必须以状态 exited、退出码 0 完成；构建失败不导出制品。脚本只清理自身创建的临时容器，不清理其他容器或构建缓存。Docker 文件传输语义参见[官方 docker cp 说明](https://docs.docker.com/reference/cli/docker/container/cp/)。
+
+构建包包含 tar.gz、SHA256 校验文件、manifest、匹配该提交的 release-native.sh 和 stage_native_artifact.py；不在业务服务器执行 Node 构建。脚本拒绝 COMMIT_SHA 与实际检出提交不一致、已修改的跟踪构建输入或已存在 artifacts 路径；重跑应使用新的干净工作区。工具镜像在每次 Flow 构建服务中生成，无需发布至 ACR。若 runner 已具备 Python 3.12+、Node 20+ 和 Docker/Compose，仍可使用 `bash deploy/build-native.sh`，两条入口复用同一制品打包模块。
+
+在“构建物上传”中选择 artifacts 目录，勾选“制品中包含打包路径的目录”，归档至云效公共存储空间，供后续主机部署下载；仅上传这些构建产物，禁止上传 .env、.local 或整个工作区。主机部署需同时拿到压缩包、校验文件与 release-native.sh，不能假设服务器已有当前仓库的发布脚本。参见[构建物上传参数](https://help.aliyun.com/zh/yunxiao/user-guide/python-test-build)、[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)。具体主机组与部署任务需在用户的 Flow 组织配置并实际演练。
+
+原生控制流程检查入口为 `python3 deploy/test-native-release.py`，容器入口在工具镜像构建时执行该检查。该工具要求 Linux 和 Python 3.12+；以 root 运行时会复制测试源码到临时目录，再通过 runuser/nobody 降权执行。当前 22 项检查包含真实临时文件打包/校验，以及用模拟 Git/Docker、pip、迁移、systemctl 和 HTTP 命令检查构建失败停止、成功切换、失败回退、归档路径/链接拒绝与并发锁；不调用真实 Docker 服务、生产服务或业务数据库。此控制流程检查不能代替真实 Flow 构建、主机部署和生产回滚验收。
 
 构建产物同时包含 stage_native_artifact.py，作为主机部署入口。将本次 Flow 运行下载的可信制品解压后，对包含 manifest.json 的 artifacts 目录执行 `python3 <解压目录>/artifacts/stage_native_artifact.py <解压目录>/artifacts`。入口要求完整提交 SHA、准确的归档名称、manifest/校验文件/实际归档的 SHA-256 一致，以及同包内的 release-native.sh；若部署任务传入 COMMIT_SHA，还必须与该次制品一致。失败在复制/发布前停止，校验通过后将归档及校验文件原子放入 `/opt/vueblog/incoming`，调用该包附带的发布脚本。可加 `--verify-only` 仅检查而不复制或部署。该入口只用于可信 Flow 制品，不提供对任意来源脚本的授权保证。
 

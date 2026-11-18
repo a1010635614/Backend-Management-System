@@ -4,7 +4,25 @@
 
 ### 2026-11-18 继续准备
 
+#### Docker 服务已连通，待中国香港集群复测镜像拉取
+
+用户提供 21:57:52 日志：Docker Client 26.1.3 与 Server（based 25.0.5/API 1.44）均有正常输出，先前 tcp://127.0.0.1:2375 无法连接的状态已被新证据取代。Python 官方镜像拉取随后访问 registry-1.docker.io/v2/ 超时，退出 125，Node 尚未运行。已按阿里云同类 Docker Hub 超时官方说明，指导将当前任务由杭州切换为云效中国香港构建集群，保留 amd64、Docker Daemon 和验证命令，保存并新运行；尚待结果，不将建议当作网络恢复证明。
+
+已实现 deploy/build-flow.sh 与 Dockerfile.flow-tools：宿主仅需 Bash/Git/Docker/Compose，提交源码通过 git archive/docker cp 传输，容器内 Python 3.12/Node 22 执行检查、构建与打包，PostgreSQL 16 真实集成步骤保留。避免宿主共享目录假设；前端和打包进程退出状态必须成功才导出 artifacts；只回收本次创建的容器。共享 package_native.py 供原生/容器构建两入口使用，输出部署包、manifest、校验文件和对应发布入口，不含配置或本机密钥。
+
+服务器独立验证目录以 nobody 运行 22 项检查全部通过：原 8 项发布控制、4 项制品暂存、4 项共享打包，加 6 项使用模拟 Docker/Git 的构建失败控制。最后六项覆盖无 daemon、数据库失败、客户端 start 返回成功但前端/打包进程失败、文件流失败和成功清理；不代表真实 Docker 命令已经可用。21 个 Bash 文件语法解析通过；本机共享打包 4 项通过。未改动线上服务/业务数据库，尚未实际构建工具镜像、生成 Flow 制品或部署。源码同步状态以之后的明确远程 SHA 记录为准。
+
+#### 云效实际环境检查：Docker 服务未连接
+
+用户已确认添加 GitHub 代码源并返回画布；两次实际命令日志的工作目录均为 workspace/blog，已进入代码源目录。首次运行显示 x86_64、Git 2.43.5、Python 3.6.8、Docker 26.1.3、Compose v2.27.0，runuser/flock 存在，Node/npm 缺失。第二次运行（build 34793aea-d779-4419-8585-959917c7f940）在 docker version 即失败：无法连接 tcp://127.0.0.1:2375 的 Docker daemon；后续 Python/Node 容器命令未运行，尚未验证镜像拉取或容器启动。
+
+下一步指导用户在当前 Flow 构建任务设置中查找并启用“开启 Docker Daemon”，保存后发起新运行，复测 Docker Client/Server 与 Python 3.12、Node 22 容器。官方构建集群说明确认存在该开关，但不预设 Region 站的具体界面位置，也不因连接失败就断言开关必然关闭。无需开放业务服务器端口或修改线上服务。容器构建适配仍在准备；工作区新增的共享制品打包模块已有四项本机检查通过，未提交/推送，也未完成新的 Linux 联合检查。Flow 完整构建、上传、部署、触发及终态通知均未验收。
+
 #### 云效 GitHub 授权排错与制品部署入口
+
+最新用户反馈与截图：在明确 SHA256 指纹与 .pem 全文区别后，用户反馈“可以了”，GitHub 代码源表单已显示 a1010635614/Backend-Management-System 仓库；此前 AccessToken Not Found 不再作为当前阻塞。尚未确认代码源添加完成或实际克隆成功，已指引默认分支 main、工作目录 blog，并在手动流水线配置完成后再接提交触发。没有据此断言原错误的唯一根因。
+
+制品部署入口已正常同步至 GitHub main，远程复核为 5ef1a70b057524f0a566dc3ec52f67e04d71e6fc。本机两份 Git 的 TLS 后端差异经只读比较后，改用已验证可工作的配套 Git/Schannel，且仅为本次命令使用 HTTPS DNS 查询地址，保留 TLS 校验；没有修改全局设置、强制推送或读出凭据。此为一次同步记录，后续提交以实时 Git 状态为准。
 
 用户确认 GitHub App 已创建，安装配置页面的截图也显示已安装。云效证书三项已填写并选入服务连接，但在加载仓库时出现原文“AccessToken Not Found”；不能据此认定 Github 授权已成功。当前已请求用户仅确认 Private key 是否为 Generate a private key 下载的 .pem 全文，尚待回复；没有要求发送私钥。Client ID/安装编号匹配、权限与云效端连通性仍需按证据检查，不把猜测当根因。
 
