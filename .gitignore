@@ -1,0 +1,15 @@
+.env
+node_modules/
+dist/
+target/
+*.log
+.idea/
+.vscode/
+.npm-cache/
+.venv/
+__pycache__/
+*.tsbuildinfo
+.pip-cache/
+.preview.db*
+.local/
+artifacts/

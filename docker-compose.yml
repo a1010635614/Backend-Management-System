@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blog}
+      POSTGRES_USER: ${POSTGRES_USER:-blog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blog}
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-blog} -d ${POSTGRES_DB:-blog}"], interval: 5s, timeout: 3s, retries: 10}
+    restart: unless-stopped
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-blog}:${POSTGRES_PASSWORD:-blog}@postgres:5432/${POSTGRES_DB:-blog}
+      JWT_SECRET: ${JWT_SECRET:-development-only-change-this-secret-key}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-noreply@example.com}
+      GEETEST_ID: ${GEETEST_ID:-}
+      GEETEST_KEY: ${GEETEST_KEY:-}
+      COS_SECRET_ID: ${COS_SECRET_ID:-}
+      COS_SECRET_KEY: ${COS_SECRET_KEY:-}
+      COS_REGION: ${COS_REGION:-ap-shanghai}
+      COS_BUCKET: ${COS_BUCKET:-}
+      COS_PUBLIC_BASE_URL: ${COS_PUBLIC_BASE_URL:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      BAIDU_HM_ID: ${BAIDU_HM_ID:-}
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on: {postgres: {condition: service_healthy}}
+    restart: unless-stopped
+  web:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on: [api]
+    restart: unless-stopped
+volumes: {pgdata: {}}
