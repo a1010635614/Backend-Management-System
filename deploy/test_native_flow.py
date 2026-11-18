@@ -30,7 +30,7 @@ with open(os.environ['FLOW_TEST_DOCKER_LOG'], 'a') as log:
 if args[0] == 'info': raise SystemExit(1 if failure == 'daemon' else 0)
 elif args[0] == 'compose': pass
 elif args[0] == 'build': sys.stdin.buffer.read()
-elif args[0] == 'create': print(('a' if 'node:22-bookworm-slim' in args else 'b') * 64)
+elif args[0] == 'create': print(('a' if any('node:' in value for value in args) else 'b') * 64)
 elif args[0] == 'start': pass  # Client success must not hide a failed container process.
 elif args[0] == 'inspect':
     failed = (failure == 'frontend' and args[-1] == 'a' * 64) or (failure == 'package' and args[-1] == 'b' * 64)
@@ -61,12 +61,13 @@ class FlowBuildControlTests(unittest.TestCase):
         deploy = self.root / 'deploy'
         deploy.mkdir()
         shutil.copyfile(Path(__file__).with_name('build-flow.sh'), deploy / 'build-flow.sh')
-        (deploy / 'test-postgres.sh').write_text('if [[ "${FLOW_TEST_FAILURE:-}" == postgres ]]; then exit 7; fi\n')
+        (deploy / 'test-postgres.sh').write_text('if [[ "${FLOW_TEST_FAILURE:-}" == postgres ]]; then exit 7; fi\nprintf "%s\\n%s\\n" "$PYTHON_BUILD_IMAGE" "$POSTGRES_TEST_IMAGE" > postgres-images.txt\n')
         self.log = self.root / 'docker.jsonl'
 
-    def run_build(self, failure=''):
+    def run_build(self, failure='', images=None):
         env = {**os.environ, 'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
                'COMMIT_SHA': 'c' * 40, 'FLOW_TEST_FAILURE': failure, 'FLOW_TEST_DOCKER_LOG': str(self.log)}
+        env.update(images or {})
         result = subprocess.run(['bash', 'deploy/build-flow.sh'], cwd=self.root, env=env,
                                 text=True, capture_output=True, timeout=30)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
@@ -112,6 +113,19 @@ class FlowBuildControlTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.root / 'artifacts/fixture').read_text(), 'copied')
         self.assertEqual(calls[-1], ['rm', '--force', 'a' * 64, 'b' * 64])
+
+    def test_configured_image_sources_reach_tools_frontend_and_database_checks(self):
+        images = {'PYTHON_BUILD_IMAGE': 'public.ecr.aws/docker/library/python:3.12-slim-bookworm',
+                  'NODE_BUILD_IMAGE': 'public.ecr.aws/docker/library/node:22-bookworm-slim',
+                  'POSTGRES_TEST_IMAGE': 'public.ecr.aws/docker/library/postgres:16-alpine'}
+        result, calls = self.run_build(images=images)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        build = next(call for call in calls if call[0] == 'build')
+        self.assertIn('PYTHON_BUILD_IMAGE=' + images['PYTHON_BUILD_IMAGE'], build)
+        web = next(call for call in calls if call[0] == 'create')
+        self.assertIn(images['NODE_BUILD_IMAGE'], web)
+        self.assertEqual((self.root / 'postgres-images.txt').read_text().splitlines(),
+                         [images['PYTHON_BUILD_IMAGE'], images['POSTGRES_TEST_IMAGE']])
 
 
 if __name__ == '__main__': unittest.main()

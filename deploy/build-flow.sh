@@ -36,11 +36,14 @@ start_checked() {
     fi
 }
 
+python_image="${PYTHON_BUILD_IMAGE:-python:3.12-slim-bookworm}"
+node_image="${NODE_BUILD_IMAGE:-node:22-bookworm-slim}"
+postgres_image="${POSTGRES_TEST_IMAGE:-postgres:16-alpine}"
 tools_image="vueblog-flow-tools:${COMMIT_SHA}"
-git archive "${COMMIT_SHA}:deploy" | docker build --tag "$tools_image" --file Dockerfile.flow-tools -
-POSTGRES_TEST_IMAGE=postgres:16-alpine bash deploy/test-postgres.sh
+git archive "${COMMIT_SHA}:deploy" | docker build --tag "$tools_image" --build-arg "PYTHON_BUILD_IMAGE=$python_image" --file Dockerfile.flow-tools -
+PYTHON_BUILD_IMAGE="$python_image" POSTGRES_TEST_IMAGE="$postgres_image" bash deploy/test-postgres.sh
 
-web=$(docker create --workdir /frontend node:22-bookworm-slim sh -c 'npm ci && npm run build')
+web=$(docker create --workdir /frontend "$node_image" sh -c 'npm ci && npm run build')
 [[ "$web" =~ ^[a-f0-9]{64}$ ]] || { echo 'Docker did not return a container ID'; exit 1; }
 containers+=("$web")
 git archive "$COMMIT_SHA" frontend | docker cp - "$web:/"

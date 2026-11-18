@@ -4,6 +4,14 @@
 
 ### 2026-11-18 继续准备
 
+#### 当前组织无香港集群，改验 Docker 官方 ECR Public 镜像
+
+用户确认没有中国香港集群选项，保留杭州。已查证 Docker 官方将 Official Images 发布到 Amazon ECR Public，本机对 docker/library/python:3.12-slim-bookworm、node:22-bookworm-slim、postgres:16-alpine 的公开 manifest 请求均为 200，并包含 Linux/amd64 平台。已请用户在 Flow 分别运行三个镜像的版本命令；尚待杭州实际拉取/运行结果，不以本机网络检查代替。
+
+构建入口已增加 PYTHON_BUILD_IMAGE、NODE_BUILD_IMAGE、POSTGRES_TEST_IMAGE；Python 来源同步用于工具 Dockerfile 与后端测试 Dockerfile/Compose，保持原默认行为。新增一项模拟客户端检查确认三类来源传入对应步骤，Linux nobody 隔离套件现为 23 项全部通过，21 个 Bash 文件语法再次通过，Compose YAML 解析通过；真实镜像构建、数据库检查和发布仍待 Flow 联调。
+
+首批脚本已保存本地提交 8f7ed88。一次 GitHub 同步在远程只读查询阶段连接失败，状态文件仍为上一已核对的 5ef1a70，未执行 push；不把本地提交视为远程可用。后续明确同步结果记录为准。
+
 #### Docker 服务已连通，待中国香港集群复测镜像拉取
 
 用户提供 21:57:52 日志：Docker Client 26.1.3 与 Server（based 25.0.5/API 1.44）均有正常输出，先前 tcp://127.0.0.1:2375 无法连接的状态已被新证据取代。Python 官方镜像拉取随后访问 registry-1.docker.io/v2/ 超时，退出 125，Node 尚未运行。已按阿里云同类 Docker Hub 超时官方说明，指导将当前任务由杭州切换为云效中国香港构建集群，保留 amd64、Docker Daemon 和验证命令，保存并新运行；尚待结果，不将建议当作网络恢复证明。
