@@ -12,17 +12,20 @@
 
 ## 浏览器跨域规则
 
-由桶管理员在 COS 控制台为该桶新增 CORS 规则：
+由桶管理员在 COS 控制台进入该桶的“安全管理 → 跨域访问 CORS”，分别保留本机规则并新增正式网站规则：
 
-| 字段 | 本机联调值 |
-|---|---|
-| 来源 Origin | http://127.0.0.1:5173 |
-| 方法 | PUT、GET、HEAD |
-| 允许请求头 | Content-Type、Content-Length |
-| 暴露响应头 | ETag |
-| 缓存时间 | 600 秒 |
+| 字段 | 本机联调规则 | 正式网站规则 |
+|---|---|---|
+| 来源 Origin | http://127.0.0.1:5173 | https://kongqi.xyz |
+| 方法 | PUT、GET、HEAD | PUT、GET、HEAD |
+| 允许请求头 | Content-Type、Content-Length，每行一个 | Content-Type、Content-Length，每行一个 |
+| 暴露响应头 | ETag | ETag |
+| 缓存时间 | 600 秒 | 600 秒 |
+| 返回 Vary: Origin | 勾选 | 勾选 |
 
-本目录 `cos-cors.json` 是 Python SDK 的 CORSConfiguration 示例，不是 CAM 权限策略。若控制台使用表单，按上表填写；不要用它覆盖已有的其他业务 CORS 规则。正式网站备案和 HTTPS 访问验收完成后，再增加实际网站 Origin。此规则不把桶改为公有读。
+Origin 只填协议和主机，不带路径或末尾斜杠。请求头每行只填名称，不带 Markdown 的星号、反引号或逗号。本目录 `cos-cors.json` 是包含这两个来源的 Python SDK CORSConfiguration 示例，不是 CAM 权限策略。若控制台使用表单，按上表填写；不要用示例覆盖已有的其他业务 CORS 规则。这些规则不把桶改为公有读。
+
+2026-11-19 已对同一 uploads/verification/ 路径执行不带凭据的 OPTIONS 预请求（PUT，content-type/content-length）。本机 Origin 返回 200 及正确的允许来源、方法和头；正式网站 Origin 返回 403 AccessForbidden，未返回 Access-Control-Allow-Origin。正式规则尚待桶管理员保存并复测，修改本示例文件不会自动修改云端。该检查没有上传或删除对象，也未读取桶密钥。CORS 规则单独验收，ICP备案仍按用户要求暂缓，不能用 CORS 成功代替备案或公网稳定性验收。
 
 参考[腾讯云 CORS 配置](https://cloud.tencent.com/document/product/436/43811)。应用运行账号不需要修改桶 CORS 的权限，管理员在控制台设置即可。
 

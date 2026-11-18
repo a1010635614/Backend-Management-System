@@ -7,6 +7,14 @@
       "AllowedHeader": ["Content-Type", "Content-Length"],
       "ExposeHeader": ["ETag"],
       "MaxAgeSeconds": 600
+    },
+    {
+      "ID": "blog-production",
+      "AllowedOrigin": ["https://kongqi.xyz"],
+      "AllowedMethod": ["PUT", "GET", "HEAD"],
+      "AllowedHeader": ["Content-Type", "Content-Length"],
+      "ExposeHeader": ["ETag"],
+      "MaxAgeSeconds": 600
     }
   ]
 }
