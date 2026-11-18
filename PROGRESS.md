@@ -4,6 +4,16 @@
 
 ### 2026-11-19 构建与制品仓库联调
 
+#### 第 10 次流水线已完成真实发布并独立验收
+
+当前手动 Flow 链路已跑通。第 8 次运行使用 e94e133c1219a672c704be4e968c7af6abb87366，构建及 Packages 上传成功，用时 3 分 49 秒，产物 blog-native:8；证明 HTTPS 根证书引导修复已在真实云效环境通过。
+
+第 9 次新增独立部署阶段及生产部署任务，选择同次构建输出 blog-native、blog-production 主机组、root 用户，下载至 /opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz，不暂停、分批 1，先以 --verify-only 运行。整体成功，用时 4 分 26 秒，主机阶段 10 秒。另通过严格 SSH 对实际下载的第 9 版归档独立验包：63515 字节，完整提交号与预期一致。
+
+第 10 次移除验包开关，正式发布成功：2026-11-19 01:05:11 开始，总用时 3 分 38 秒，构建 2 分 19 秒，主机发布 1 分 19 秒，产物 blog-native:10。独立 SSH 验收确认 current 目录名和 .current-release 均匹配完整提交号，实际进程工作目录位于该版本，systemd 使用该版本虚拟环境；vueblog/nginx/PostgreSQL active，数据库健康 UP，文章接口正常且保留两篇文章，百度公开 ID 正确、极验 ID 非空、OpenAPI 与 Swagger 页面正常，公网首页及引导 JS/CSS 的字节哈希与实际发布目录一致。
+
+上述只证明手动流水线的真实构建、上传、下载、发布及运行状态。GitHub 提交触发、流水线飞书成功/失败通知、真实回滚演练与 CDN 尚未验收，ICP备案按用户要求暂缓。下一步优先使用云效原生飞书通知插件（官方支持 Webhook 和加签），先仅保存通知配置，再接 GitHub 触发，以一次新的源码提交验收自动链路；凭据只由用户填入云效。
+
 #### HTTPS 软件源初始化修复，待下一次 Flow 验证
 
 用户提供 f784f8b 的新一次运行日志：00:22:35 开始，00:23:13 因 APT 安装返回 100，执行命令 exit 1。直接错误为 Certificate verification failed 与 No system certificates available；HTTPS 源索引未能加载，随后才出现 ca-certificates/libbluetooth3/libexpat1 无安装候选的次生错误，上传尚未执行。第 6 次成功日志也确认这三个包原本都未安装，因此更换 HTTPS 源时遗漏了根证书引导。

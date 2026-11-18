@@ -52,9 +52,9 @@ bash deploy/build-flow.sh
 
 新版只要求任务环境有 Bash、Git、Docker 和 tar。Dockerfile.flow-build 使用多阶段构建：在同为 Debian bookworm 的 PostgreSQL 16 与 Python 3.12 官方运行时中启动独立临时数据库，执行迁移、结构检查和全部后端检查，要求零跳过；接着由 Node 22 构建前端，再用共享模块打包并校验原生制品。前端阶段依赖后端实际检查完成，未通过则无法构建最终导出镜像。多阶段机制参见[Docker 官方说明](https://docs.docker.com/build/building/multi-stage/)。
 
-第 6 次 Flow 运行已实际检出 3ee905c，三个基础镜像完成拉取，随后在 Debian 官方源的 bookworm 软件包索引下载阶段多次重试，最终恢复并于 2026-11-19 00:11:41 完成完整构建。后续版本仅在 Flow 检查镜像内，将 Debian 主源及安全更新源改为阿里云公开 HTTPS 镜像，并设置连接及数据传输超时 30 秒、重试两次；保留 Debian 签名和 HTTPS 证书校验。此设置不修改业务服务器的软件源，不会改变已开始的运行。镜像地址参见[阿里云 Debian 镜像](https://developer.aliyun.com/mirror/debian)。新镜像源的实际速度仍待之后的 Flow 运行验证。
+第 6 次 Flow 运行已实际检出 3ee905c，三个基础镜像完成拉取，随后在 Debian 官方源的 bookworm 软件包索引下载阶段多次重试，最终恢复并于 2026-11-19 00:11:41 完成完整构建。后续版本仅在 Flow 检查镜像内，将 Debian 主源及安全更新源改为阿里云公开 HTTPS 镜像，并设置连接及数据传输超时 30 秒、重试两次；保留 Debian 签名和 HTTPS 证书校验。此设置不修改业务服务器的软件源，不会改变已开始的运行。镜像地址参见[阿里云 Debian 镜像](https://developer.aliyun.com/mirror/debian)。修复后的第 8 次构建及上传已成功，完整运行用时 3 分 49 秒。
 
-随后 f784f8b 的真实运行确认 PostgreSQL 基础镜像尚未安装 ca-certificates，直接切换 HTTPS 源会报 No system certificates available，索引为空后出现软件包无候选的次生错误。当前先从已使用的官方 Python 阶段复制系统 CA bundle，检查非空，再通过 HTTPS 初始化 APT；更新添加 --error-on=any，下载索引失败立即停止。官方 Python 镜像的[构建定义](https://github.com/docker-library/python/blob/master/3.12/slim-bookworm/Dockerfile)包含 ca-certificates，[APT HTTPS 说明](https://manpages.debian.org/bookworm/apt/apt-transport-https.1.en.html)说明系统根证书的用途。完整修复效果仍待之后的 Flow 运行。
+随后 f784f8b 的真实运行确认 PostgreSQL 基础镜像尚未安装 ca-certificates，直接切换 HTTPS 源会报 No system certificates available，索引为空后出现软件包无候选的次生错误。当前先从已使用的官方 Python 阶段复制系统 CA bundle，检查非空，再通过 HTTPS 初始化 APT；更新添加 --error-on=any，下载索引失败立即停止。官方 Python 镜像的[构建定义](https://github.com/docker-library/python/blob/master/3.12/slim-bookworm/Dockerfile)包含 ca-certificates，[APT HTTPS 说明](https://manpages.debian.org/bookworm/apt/apt-transport-https.1.en.html)说明系统根证书的用途。e94e133 的真实 Flow 第 8 次运行已通过该初始化及后续完整构建。
 
 源码从指定提交通过 git archive 传给构建，不挂载工作区或传入生产配置。完成后运行本地制品镜像，将 tar 输出直接解到新的私有临时目录；导出进程退出码、解压或必需文件检查有任一失败则清理本次临时目录，成功才移动为 artifacts。临时 PostgreSQL 只监听回环地址，使用全新数据目录和随机端口，结束时停止并清理；不依赖跨容器网络。
 
@@ -95,15 +95,22 @@ Python 包下载可通过 PYTHON_PACKAGE_INDEX 选择公开 HTTPS 包源，默�
 首次主机任务先检查真实下载包：
 
 ```bash
-set -euo pipefail
-: "${PIPELINE_ID:?}" "${BUILD_NUMBER:?}"
+set -eu
+test -n "$PIPELINE_ID"
+test -n "$BUILD_NUMBER"
 export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 /usr/local/sbin/vueblog-flow-deploy \
-  "/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz" --verify-only
+  "/opt/vueblog/flow/$PIPELINE_ID/$BUILD_NUMBER/blog-native.tgz" --verify-only
 ```
 
 该步骤成功后，将最后的 `--verify-only` 去掉即可进入原生发布。若配置 COMMIT_SHA，使用界面变量选择器映射本次 GitHub 源的完整提交号；不填固定的旧 SHA。不能只将文件下载成功当作部署成功，最终必须核对 `/opt/vueblog/.current-release`、服务健康、实际网站与本次源提交。
 
 发布脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 
-**当前验证边界**：旧版 Flow 曾因 Compose 网络接口被拒绝而失败。新版在真实 Flow 第 6 次运行（源码 3ee905c）已完成 29 项发布控制/制品检查、真实临时 PostgreSQL 16.16 的 14 项业务检查（零跳过）、Vue 类型检查及生产构建、制品打包/校验/导出，执行命令步骤明确 SUCCESS。Packages 上传、主机发布、真实故障回滚、飞书终态通知与 GitHub 提交触发仍待实际验收；后续 Debian 镜像源调整也尚未在 Flow 验证。服务器上的首次部署仍由 install-native.sh 完成。两种发布方案只能选定一种用于同一服务，避免相互覆盖。
+**当前验证边界**：新版构建、Packages 上传及主机发布均已有真实 Flow 成功证据。第 9 次实际下载包已独立验包；第 10 次已将 e94e133c1219a672c704be4e968c7af6abb87366 发布到服务器，实际进程目录、版本标记、虚拟环境、数据库健康、文章接口、Swagger、首页和引导 JS/CSS 均通过独立检查。GitHub 提交触发、飞书终态通知与真实故障回滚仍待验收。现有发布入口拒绝覆盖已存在的提交目录，配置通知时先仅保存，随后用新的源码提交验证自动链路。
+
+### 飞书通知与代码提交触发
+
+当前优先使用云效内置的飞书机器人通知插件，Webhook 和加签密钥由用户直接填入云效，不写入仓库。生产部署任务订阅成功、失败、取消；构建任务订阅失败、取消，确保构建失败时能收到信息，且构建成功不会被标成发布成功。插件通知内容选择流水线、阶段、任务、状态和执行人，自定义内容保留“纸间博客部署通知”标题，可加入网站、环境、提交、分支和运行编号。详细字段和变量展开须用实际通知确认，参见[官方通知插件说明](https://help.aliyun.com/zh/yunxiao/user-guide/other-plug-ins/)。notify.py 仍保留为需要自定义发送逻辑时的备选入口。
+
+先仅保存插件配置，再开启 GitHub main 代码源触发并按云效提示配置仓库 Webhook；用一项真实源码或文档更新提交到 main 验证新运行，核对来源提交、Packages 版本、服务器版本标记与飞书通知一致。通知失败分支仍需单独实际验收，不能只凭插件保存成功或先前机器人测试判断完成。
