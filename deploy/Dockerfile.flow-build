@@ -8,8 +8,12 @@ FROM ${PYTHON_BUILD_IMAGE} AS python-runtime
 # build container so Flow does not need Compose or Docker network-management APIs.
 FROM ${POSTGRES_TEST_IMAGE} AS checks
 COPY --from=python-runtime /usr/local/ /usr/local/
+# The PostgreSQL base lacks ca-certificates. Bootstrap HTTPS with the trusted
+# Python image's CA bundle before fetching the package that installs it.
+COPY --from=python-runtime /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV PATH=/usr/local/bin:$PATH
 RUN test "$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")" = bookworm \
+    && test -s /etc/ssl/certs/ca-certificates.crt \
     && rm -f /etc/apt/sources.list.d/pgdg.list \
     && for source in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
          if [ -f "$source" ]; then \
@@ -18,7 +22,7 @@ RUN test "$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")" = bookworm \
        done \
     && printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "30";' \
        'Acquire::https::Timeout "30";' > /etc/apt/apt.conf.d/80flow-network \
-    && apt-get update \
+    && apt-get update --error-on=any \
     && apt-get install -y --no-install-recommends \
        bash util-linux ca-certificates libbluetooth3 libbz2-1.0 libdb5.3 \
        libexpat1 libffi8 libgdbm6 libgdbm-compat4 liblzma5 libncursesw6 \

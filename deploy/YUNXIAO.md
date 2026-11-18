@@ -54,6 +54,8 @@ bash deploy/build-flow.sh
 
 第 6 次 Flow 运行已实际检出 3ee905c，三个基础镜像完成拉取，随后在 Debian 官方源的 bookworm 软件包索引下载阶段多次重试，最终恢复并于 2026-11-19 00:11:41 完成完整构建。后续版本仅在 Flow 检查镜像内，将 Debian 主源及安全更新源改为阿里云公开 HTTPS 镜像，并设置连接及数据传输超时 30 秒、重试两次；保留 Debian 签名和 HTTPS 证书校验。此设置不修改业务服务器的软件源，不会改变已开始的运行。镜像地址参见[阿里云 Debian 镜像](https://developer.aliyun.com/mirror/debian)。新镜像源的实际速度仍待之后的 Flow 运行验证。
 
+随后 f784f8b 的真实运行确认 PostgreSQL 基础镜像尚未安装 ca-certificates，直接切换 HTTPS 源会报 No system certificates available，索引为空后出现软件包无候选的次生错误。当前先从已使用的官方 Python 阶段复制系统 CA bundle，检查非空，再通过 HTTPS 初始化 APT；更新添加 --error-on=any，下载索引失败立即停止。官方 Python 镜像的[构建定义](https://github.com/docker-library/python/blob/master/3.12/slim-bookworm/Dockerfile)包含 ca-certificates，[APT HTTPS 说明](https://manpages.debian.org/bookworm/apt/apt-transport-https.1.en.html)说明系统根证书的用途。完整修复效果仍待之后的 Flow 运行。
+
 源码从指定提交通过 git archive 传给构建，不挂载工作区或传入生产配置。完成后运行本地制品镜像，将 tar 输出直接解到新的私有临时目录；导出进程退出码、解压或必需文件检查有任一失败则清理本次临时目录，成功才移动为 artifacts。临时 PostgreSQL 只监听回环地址，使用全新数据目录和随机端口，结束时停止并清理；不依赖跨容器网络。
 
 默认基础镜像来自 Docker Hub。支持通过 PYTHON_BUILD_IMAGE、NODE_BUILD_IMAGE、POSTGRES_TEST_IMAGE 配置来源。新版 PostgreSQL 必须使用 16-bookworm，与 Python 的 bookworm 运行时一致；旧的 16-alpine 配置会在构建前明确报错。ECR 的 16-bookworm 标签已确认有 Linux/amd64 manifest，实际组合镜像仍待云效验证。当前命令为：

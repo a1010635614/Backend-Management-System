@@ -4,6 +4,14 @@
 
 ### 2026-11-19 构建与制品仓库联调
 
+#### HTTPS 软件源初始化修复，待下一次 Flow 验证
+
+用户提供 f784f8b 的新一次运行日志：00:22:35 开始，00:23:13 因 APT 安装返回 100，执行命令 exit 1。直接错误为 Certificate verification failed 与 No system certificates available；HTTPS 源索引未能加载，随后才出现 ca-certificates/libbluetooth3/libexpat1 无安装候选的次生错误，上传尚未执行。第 6 次成功日志也确认这三个包原本都未安装，因此更换 HTTPS 源时遗漏了根证书引导。
+
+Dockerfile.flow-build 已改为先从同次使用的官方 Python 镜像复制 /etc/ssl/certs/ca-certificates.crt，验证文件非空，再访问 HTTPS 镜像；APT 更新增加 --error-on=any，索引下载失败立即停止。保持 HTTPS 和 Debian 签名验证。6 个 RUN 的 Bash 语法检查通过。另已读取 Flow 实际 Python 镜像的固定 digest，校验 manifest/amd64 manifest/对应层的 SHA-256，从该层读取实际 CA bundle（149 个根证书），仅信任该 bundle 时三个阿里云 InRelease HTTPS 请求均为 200。此检查直接验证引导证书能建立信任；完整 Docker/APT 验收仍须之后的真实 Flow 运行，不能用本机请求或已有旧版本构建成功代替。
+
+已只读核对 npm 的 6 条 high 告警：均由构建工具链中的 picomatch 4.0.7 及其上游依赖传播而来，GitHub 的 GHSA-fc5q-39xc-vjpf 已于 2026-11-18 撤回；npm 当前仍报告 6 条，注册表最新版本仍为 4.0.7。保留已通过构建的依赖，不添加忽略规则或执行强制降级；不据此宣称 npm 审计为零。公告原文：https://github.com/advisories/GHSA-fc5q-39xc-vjpf 。
+
 用户随后提供第 6 次运行的原始执行日志，确认该命令已于 2026-11-19 00:11:41 以 SUCCESS 结束。实际源码为 3ee905c484a482e7702128547f1fb208e010728c，29 项发布控制/制品检查通过，真实临时 PostgreSQL 16.16（160016）迁移、结构检查及 14 项业务检查全部通过、零跳过；Node npm ci 与 Vue 类型检查/生产构建通过，最终导出输出 Native artifact ready。此结果取代此前“组合镜像/前端/制品导出未实测”的记录，证明不调用 Compose 网络接口的完整构建已在真实 Flow 跑通。
 
 该次开始于 2026-11-18 23:50:25，使用 Python/Node/16-bookworm 的 ECR 镜像和阿里云 Python 包源；Debian 官方源索引曾多次重试，之后恢复并完成安装。先前在持续 17 分钟时读到运行中，未因观察超时取消或重发该实例。用户提供的是执行命令步骤日志，尚无 Packages 上传、主机发布与自动终态通知的成功证据。
