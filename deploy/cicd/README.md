@@ -44,17 +44,16 @@ bash deploy/cicd/build.sh
 
 主机组沿用 `blog-production`。主机需要真实 Docker/Compose，不能复用 Flow 的受限 Docker 服务。公网只开放 Nginx 80/443；PostgreSQL/Redis 不映射端口，候选和生产容器网关均只绑定回环。
 
-迁移准备完成后，更新主机接收器，并让任务从本次“代码源提交号”映射出 `COMMIT_SHA`。必须从云效字段选择器引用实际代码源提交号，不要填固定 SHA，也不要用运行编号代替。
+首次切流完成后，主机任务改用新 `current` 内的版本化接收器，不再调用旧 `/usr/local/sbin/vueblog-flow-deploy`。保持下载路径 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，取消“变量进行编码”。先用 `--inspect` 核对本次完整代码源 SHA、流水线/运行编号和下载路径，再启用实际发布。
 
 ```bash
 set -euo pipefail
-: "${COMMIT_SHA:?请在云效映射本次代码源完整提交号}"
-/usr/local/sbin/vueblog-flow-deploy \
-  "/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz" \
-  --commit "$COMMIT_SHA"
+python3 /opt/blog-fullstack/current/deploy/scripts/flow_host.py
 ```
 
-新版接收器未安装前不能使用以上新参数。首次从原生系统迁移要先备份、停止旧写入、导入新数据库、执行 0003 并核对数据，健康通过后切换主机 Nginx。不得用 `--initialize-empty` 代替现有数据库迁移。
+`flow_host.py` 从 `CI_COMMIT_SHA_1` 或单一代码源的 `CI_COMMIT_SHA` 获取完整提交；短提交号 `CI_COMMIT_ID`、编码值或两个来源不一致时停止。它只向同一已解析版本目录中的 `receive.py` 传递分离参数，接收器继续验证外层归档、格式 2 manifest、源码 SHA 和已完成切流的 gate；实际发布仍持有部署锁。官方变量范围和编码注意事项见 [环境变量](https://help.aliyun.com/zh/yunxiao/user-guide/environment-variables/) 与 [主机部署问题](https://help.aliyun.com/zh/yunxiao/user-guide/common-issues-in-host-deployment/)。
+
+新 `current` 尚未建立时不能提前使用此命令；旧主机步骤继续服务当前原生 main，待维护窗口完成后再替换。首次迁移必须先备份、停止旧写入、导入新库、执行 0003、核对数据及切流，不得用 `--initialize-empty` 代替。旧 native 维护脚本仅保留作历史恢复材料，不得再用于新数据库或新制品。
 
 ## 环境变量
 
