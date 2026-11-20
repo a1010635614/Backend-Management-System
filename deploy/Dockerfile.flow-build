@@ -1,3 +1,5 @@
+# Historical native pipeline. New builds use deploy/docker/ci.Dockerfile through
+# deploy/cicd/build.sh. This file remains for the old Flow test -f compatibility.
 ARG PYTHON_BUILD_IMAGE=python:3.12-slim-bookworm
 ARG NODE_BUILD_IMAGE=node:22-bookworm-slim
 ARG POSTGRES_TEST_IMAGE=postgres:16-bookworm

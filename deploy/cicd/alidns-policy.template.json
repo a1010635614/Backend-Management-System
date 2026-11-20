@@ -1,0 +1,17 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "alidns:DescribeDomainRecords",
+        "alidns:DescribeDomainRecordInfo",
+        "alidns:AddDomainRecord",
+        "alidns:DeleteDomainRecord"
+      ],
+      "Resource": [
+        "acs:alidns::<ALIYUN_ACCOUNT_ID>:domain/kongqi.xyz"
+      ]
+    }
+  ]
+}

@@ -31,6 +31,13 @@ from app.models import User
 from app.services import auth as auth_service, storage
 
 
+class BoundedClient(httpx.AsyncClient):
+    async def request(self, *args, **kwargs):
+        # ASGITransport has no network timeout. Bound an application deadlock too.
+        async with asyncio.timeout(15):
+            return await super().request(*args, **kwargs)
+
+
 @pytest.fixture(scope='session')
 def isolated():
     if os.getenv('BLOG_TEST_ISOLATED') != '1' or not os.getenv('TEST_DATABASE_URL') or not os.getenv('TEST_REDIS_URL'):
@@ -42,8 +49,9 @@ def isolated():
 
 @pytest_asyncio.fixture
 async def client(isolated, monkeypatch):
-    async with engine.begin() as connection:
-        await connection.execute(text('TRUNCATE assets, posts, analytics_events, email_codes, users RESTART IDENTITY CASCADE'))
+    async with asyncio.timeout(15):
+        async with engine.begin() as connection:
+            await connection.execute(text('TRUNCATE assets, posts, analytics_events, email_codes, users RESTART IDENTITY CASCADE'))
     state = {'mail': {}, 'mail_calls': 0, 'verify_result': 'success', 'metadata': {'Content-Length': '12', 'Content-Type': 'image/png'}, 'cos_calls': []}
 
     async def send(email, code, settings):
@@ -69,7 +77,7 @@ async def client(isolated, monkeypatch):
         await app.state.redis.flushdb()
         async with httpx.AsyncClient(transport=httpx.MockTransport(provider), trust_env=False) as external:
             app.state.http = external
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://testserver') as web:
+            async with BoundedClient(transport=httpx.ASGITransport(app=app), base_url='http://testserver') as web:
                 web.fixture_state = state
                 web.fixture_app = app
                 yield web

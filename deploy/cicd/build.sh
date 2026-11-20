@@ -28,7 +28,8 @@ git archive "$COMMIT_SHA" | docker build --tag "$artifact_image" --file deploy/d
   --build-arg "PYTHON_PACKAGE_INDEX=${PYTHON_PACKAGE_INDEX:-https://pypi.org/simple}" \
   --build-arg "COMMIT_SHA=$COMMIT_SHA" -
 export_dir=$(mktemp -d "$PWD/.flow-export.XXXXXXXX")
-docker run --rm --network none --read-only "$artifact_image" | tar -xzf - -C "$export_dir"
+# Keep to Flow's verified build/run API subset; this image only emits the tar.
+docker run --rm "$artifact_image" | tar -xzf - -C "$export_dir"
 for filename in manifest.json "blog-$COMMIT_SHA.tar.gz" "blog-$COMMIT_SHA.tar.gz.sha256"; do
   [[ -f "$export_dir/$filename" && ! -L "$export_dir/$filename" ]] || { echo 'Incomplete artifact export'; exit 1; }
 done

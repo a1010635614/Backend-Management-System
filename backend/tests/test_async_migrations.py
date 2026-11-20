@@ -1,6 +1,8 @@
 import asyncio
 import os
 from pathlib import Path
+import re
+import subprocess
 import sys
 
 import asyncpg
@@ -9,15 +11,25 @@ import pytest
 
 async def test_upgrade_preserves_legacy_articles_users_and_attachments(isolated):
     url = os.getenv('UPGRADE_DATABASE_URL')
-    assert url and url.startswith('postgresql+asyncpg://blog_test@127.0.0.1:')
+    assert url and re.fullmatch(r'postgresql\+asyncpg://blog_test@127\.0\.0\.1:[0-9]+/upgradecheck', url)
     env = {**os.environ, 'DATABASE_URL': url}
 
     async def migrate(*args):
-        process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'alembic', *args,
-            cwd=Path(__file__).resolve().parents[1], env=env,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        out, error = await process.communicate()
-        assert process.returncode == 0, (out + error).decode(errors='replace')
+        stage = ' '.join(args)
+        print('Legacy migration check: ' + stage, flush=True)
+        # The CLI is synchronous in production too. Keep its wait/kill handling
+        # independent of the test runner's session-scoped asyncio child watcher.
+        def run():
+            return subprocess.run([sys.executable, '-m', 'alembic', *args],
+                cwd=Path(__file__).resolve().parents[1], env=env,
+                capture_output=True, timeout=25)
+        try:
+            result = await asyncio.wait_for(asyncio.to_thread(run), timeout=35)
+        except subprocess.TimeoutExpired as error:
+            pytest.fail('Alembic subprocess timed out at '+stage+'\n'+
+                        ((error.stdout or b'')+(error.stderr or b'')).decode(errors='replace'))
+        assert result.returncode == 0, (result.stdout + result.stderr).decode(errors='replace')
+        print('Legacy migration completed: ' + stage, flush=True)
 
     await migrate('upgrade', '0002')
     dsn = url.replace('postgresql+asyncpg://', 'postgresql://', 1)

@@ -3,7 +3,8 @@
 set -euo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 python="${CI_PYTHON_BIN:-python3}"
-if [[ "$python" == */* ]]; then python=$(realpath "$python"); else python=$(command -v "$python"); fi
+# Preserve a virtualenv's Python symlink; dereferencing it loses site-packages.
+if [[ "$python" == */* ]]; then python=$(realpath -s "$python"); else python=$(command -v "$python"); fi
 if [[ -n "${POSTGRES_BIN:-}" ]]; then postgres_bin="$POSTGRES_BIN"; else postgres_bin=$(dirname "$(command -v initdb)"); fi
 redis_server="${REDIS_SERVER_BIN:-$(command -v redis-server)}"
 test -x "$postgres_bin/initdb"
