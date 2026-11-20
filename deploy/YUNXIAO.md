@@ -92,6 +92,10 @@ bash deploy/build-flow.sh
 
 Python 包下载可通过 PYTHON_PACKAGE_INDEX 选择公开 HTTPS 包源，默认仍为 https://pypi.org/simple。该变量传入后端测试镜像构建，也由原生 release-native.sh 接收；可配置为 `https://mirrors.aliyun.com/pypi/simple/`。当前日志中 SQLAlchemy 的 3.2MB 下载速度仅 12.7kB/s，本机从阿里云官方镜像成功下载同一 Linux wheel，尚未在当前云效运行中验证镜像速度。此设置供下一次检出新脚本的运行使用，不会修改当前已经启动的 pip 进程。包源说明见[阿里云 PyPI 镜像](https://developer.aliyun.com/mirror/pypi)，参数见[pip install](https://pip.pypa.io/en/stable/cli/pip_install/)。使用 HTTPS 并保留证书校验，不添加 trusted-host。
 
+2026-11-20 最新运行补充：用户提供的 f62dc92 构建日志已显示从 `https://mirrors.aliyun.com/pypi/packages/` 下载，说明镜像源设置实际生效；其中 3.1MB 包为 39.0kB/s、psycopg-binary 4.2MB 为 24.6kB/s，随后仍在下载 cryptography，尚未报错。切换包源没有消除本次下载慢的问题，不能仅根据域名换成国内镜像就宣称加速完成。
+
+当前 Dockerfile 的后端依赖在 checks 阶段安装一次，原生发布服务器另建虚拟环境安装依赖。云效任务工作区的 pip 缓存与 Docker 构建容器内的 pip 缓存是两个位置；当前 `pip --no-cache-dir` 不保留包缓存。若后续接入缓存，应同时核对 Flow 任务缓存路径、构建镜像层的持久化方式，以及 requirements 变化时的失效规则，不能只开启默认任务缓存就认定 Docker 内部下载已被缓存。当前正在执行的构建继续保留，未为缓存调整而重新运行。[云效构建环境与缓存说明](https://help.aliyun.com/zh/yunxiao/user-guide/issues-in-building)、[Docker 缓存优化](https://docs.docker.com/build/cache/optimize/)。
+
 首次主机任务先检查真实下载包：
 
 ```bash
@@ -107,10 +111,10 @@ export PYTHON_PACKAGE_INDEX=https://mirrors.aliyun.com/pypi/simple/
 
 发布脚本要求已安装 vueblog-backup，发布前备份数据库，校验压缩包、拒绝不安全归档路径，在独立版本虚拟环境安装依赖并执行测试和迁移；切换 current 后检查 API 和站点，失败则恢复上一版本代码及 systemd 服务。数据库不自动降级，迁移必须兼容上一版本。此选项不使用 ACR，后续若选择容器化仍使用原镜像方案。
 
-**当前验证边界**：新版构建、Packages 上传及主机发布均已有真实 Flow 成功证据。第 9 次实际下载包已独立验包；第 10 次已将 e94e133c1219a672c704be4e968c7af6abb87366 发布到服务器，实际进程目录、版本标记、虚拟环境、数据库健康、文章接口、Swagger、首页和引导 JS/CSS 均通过独立检查。GitHub 提交触发、飞书终态通知与真实故障回滚仍待验收。现有发布入口拒绝覆盖已存在的提交目录，配置通知时先仅保存，随后用新的源码提交验证自动链路。
+**当前验证边界**：构建、Packages 上传及主机发布均已有真实 Flow 成功证据。第 9 次实际下载包已独立验包，第 10 次完成手动发布。第 11 次由 main 推送自动触发，源码 c2d4c75a596f57efaee9225dac99e9bbd3007f3b，运行成功，用时 2 分 36 秒（构建 1 分 47 秒、发布 48 秒），产物 blog-native:11。实际下载归档独立验包成功；服务器进程目录、版本标记、虚拟环境、数据库健康、文章接口、Swagger、首页和引导 JS/CSS 均通过独立检查。用户确认目标飞书群收到该次生产部署成功通知，编号 11、提交号匹配。失败/取消通知与真实故障回滚仍待演练。现有发布入口拒绝覆盖已存在的提交目录，修改通知配置后不要直接重新发布同一提交。
 
 ### 飞书通知与代码提交触发
 
 当前优先使用云效内置的飞书机器人通知插件，Webhook 和加签密钥由用户直接填入云效，不写入仓库。生产部署任务订阅成功、失败、取消；构建任务订阅失败、取消，确保构建失败时能收到信息，且构建成功不会被标成发布成功。插件通知内容选择流水线、阶段、任务、状态和执行人，自定义内容保留“纸间博客部署通知”标题，可加入网站、环境、提交、分支和运行编号。详细字段和变量展开须用实际通知确认，参见[官方通知插件说明](https://help.aliyun.com/zh/yunxiao/user-guide/other-plug-ins/)。notify.py 仍保留为需要自定义发送逻辑时的备选入口。
 
-先仅保存插件配置，再开启 GitHub main 代码源触发并按云效提示配置仓库 Webhook；用一项真实源码或文档更新提交到 main 验证新运行，核对来源提交、Packages 版本、服务器版本标记与飞书通知一致。通知失败分支仍需单独实际验收，不能只凭插件保存成功或先前机器人测试判断完成。
+首次接入时先仅保存插件配置，再开启 GitHub main 代码源触发；事件选代码提交，分支过滤 ^main$。在 GitHub 仓库 Settings → Webhooks → Add webhook 填入云效生成的地址，Content type 选择 application/json，事件选择 Just the push event。Webhook 地址直接在平台之间复制，不写入源码或聊天。用一项真实源码或文档更新推送到 main 验证新运行，核对来源提交、Packages 版本、服务器版本标记与飞书通知一致。第 11 次已通过该成功链路；通知失败分支仍需单独实际验收，不能只凭插件保存成功或先前机器人测试判断完成。

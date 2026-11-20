@@ -25,7 +25,7 @@
 
 Origin 只填协议和主机，不带路径或末尾斜杠。请求头每行只填名称，不带 Markdown 的星号、反引号或逗号。本目录 `cos-cors.json` 是包含这两个来源的 Python SDK CORSConfiguration 示例，不是 CAM 权限策略。若控制台使用表单，按上表填写；不要用示例覆盖已有的其他业务 CORS 规则。这些规则不把桶改为公有读。
 
-2026-11-19 已对同一 uploads/verification/ 路径执行不带凭据的 OPTIONS 预请求（PUT，content-type/content-length）。本机 Origin 返回 200 及正确的允许来源、方法和头；正式网站 Origin 返回 403 AccessForbidden，未返回 Access-Control-Allow-Origin。正式规则尚待桶管理员保存并复测，修改本示例文件不会自动修改云端。该检查没有上传或删除对象，也未读取桶密钥。CORS 规则单独验收，ICP备案仍按用户要求暂缓，不能用 CORS 成功代替备案或公网稳定性验收。
+2026-11-19 对同一 uploads/verification/ 路径执行不带凭据的 OPTIONS 预请求（PUT，content-type/content-length），首次本机 Origin 为 200、正式网站为 403 AccessForbidden。用户随后保存正式规则，独立复测两个 Origin 均为 200，各自返回准确的 Access-Control-Allow-Origin，方法、请求头、ETag 暴露、600 秒缓存及 Vary 均匹配。该检查没有上传或删除对象，也未读取桶密钥。正式网页实际图片/PDF 上传与打开仍待用户验收；修改本示例文件本身不会修改云端。ICP备案仍按用户要求暂缓，CORS 成功不能代替备案或公网稳定性验收。
 
 参考[腾讯云 CORS 配置](https://cloud.tencent.com/document/product/436/43811)。应用运行账号不需要修改桶 CORS 的权限，管理员在控制台设置即可。
 

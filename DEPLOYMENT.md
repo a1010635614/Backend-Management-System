@@ -1,20 +1,24 @@
 # 上线与第三方服务接入
 
+本文同时包含实际原生部署说明与其他环境的参考配置。截至 2026-11-20，生产为 Vue 3 + FastAPI + Ubuntu PostgreSQL 16.15，使用 Nginx/systemd/版本虚拟环境；下文容器方案供本地或另行选择容器的环境使用。具体已验证证据见 [实施记录](PROGRESS.md)。
+
 ## 域名、HTTPS 与 CDN
 
 1. 准备一台部署主机或容器服务；生产数据库建议使用云 PostgreSQL（开启自动备份、私网访问和 TLS），避免将数据库端口暴露公网。
 2. 在 DNS 添加 `A` 记录：`@` 指向站点入口，`api` 指向 API 入口。若前后端同域，使用 Nginx `/api` 代理即可。
 3. 使用云厂商证书或 Let's Encrypt 申请证书。Nginx 站点配置示例见 `deploy/nginx-ssl.conf.example`，80 端口跳转 443，设置 TLS 1.2/1.3、安全响应头及自动续期。
-4. CDN 加速静态站点和 COS 图片资源。HTML 不缓存或短缓存；带 hash 的 `/assets/*` 设一年 immutable；API 禁止 CDN 缓存，上传和登录接口限流。回源使用 HTTPS，启用 Web 防护和访问日志。
+4. 当前腾讯云 CDN 仅用于 COS 图片/PDF 附件，域名 `cdn.kongqi.xyz`，中国境外区域、HTTPS 私有回源及 Type D 访客鉴权；前端站点、HTML 和 `/api/*` 仍由主站提供。应用自己的带 hash 资源可设置长期缓存，HTML/API 使用 no-store。具体参数、计费限制与验收见 [CDN 接入](deploy/CDN-SETUP.md)。
 5. `.env` 填真实强随机密码；生产覆盖 `DATABASE_URL` 等变量。仓库内 compose 端口仅示范，生产应由云负载均衡/Nginx 暴露 80/443。
+
+实际 DNS 服务为阿里云，两个权威 NS 为 `dns7.hichina.com`、`dns8.hichina.com`；CDN CNAME 为 `cdn.kongqi.xyz.cdn.dnsv1.com`，已直接向两个权威服务器核对匹配。CDN 子域名使用腾讯云证书；主站使用 Certbot/Let's Encrypt。主站 HTTP-01 续期曾因公网 403 失败，仍待处理；ICP备案按用户要求暂缓。
 
 ## 腾讯云 COS 海量文件上传
 
 浏览器直传 COS：`POST /api/uploads/presign` 接收 JSON filename/contentType/size，服务端拒绝非图片/PDF、空文件和超过 10MiB 的声明，生成限定 key、Content-Type、Content-Length 的五分钟 PUT 签名。上传成功后调用 `/api/uploads/{id}/complete`，后端通过 HEAD 核对实际大小和类型，附件才能写入文章。文件名与对象 key 分离，客户端不能指定桶内路径。
 
-私有桶附件在文章中保存 `[[asset:UUID]]` 标记。仅完成确认且被现有文章引用的附件，才可通过 `/api/media/{id}` 获取五分钟 GET 签名跳转；文章删除后入口返回 404，已发出的签名会在有效期后失效。预览图片与 PDF 链接由 Vue 渲染，不把长期签名写入文章。当前以 COS 私有读取为基础，`COS_PUBLIC_BASE_URL` 为未来 CDN 配置预留，尚未启用 CDN 签名或 STS。签名与元数据测试使用模拟对象，真实桶仍待联调；大小/MIME 校验不等同于文件内容安全扫描。参考[预签名 URL](https://cloud.tencent.com/document/product/436/35153)与[对象元数据](https://cloud.tencent.com/document/product/436/65828)。
+私有桶附件在文章中保存 `[[asset:UUID]]` 标记。仅完成确认且被现有文章引用的附件，才可通过 `/api/media/{id}` 获取五分钟 GET 签名跳转；文章删除后入口返回 404，已发出的签名会在有效期后失效。预览图片与 PDF 链接由 Vue 渲染，不把长期签名写入文章。CDN 支持使用 `CDN_BASE_URL` 和 `CDN_AUTH_KEY` 两项配置：均空时保留 COS 签名下载，完整启用后改为腾讯云 Type D 签名跳转，部分或无效配置返回 503；上传始终直传 COS。真实 COS 和正式浏览器上传已验收；云端 CDN 已独立通过内容比对、有效签名、暖缓存后无签名/错误/过期签名拒绝及 Cache Hit，应用新版本发布和切换尚待完成。当前没有使用 STS。大小/MIME 校验不等同于文件内容安全扫描。参考[预签名 URL](https://cloud.tencent.com/document/product/436/35153)与[对象元数据](https://cloud.tencent.com/document/product/436/65828)。
 
-创建私有读写桶；受限子账号只授权对应桶 `uploads/*` 的上传和读取（包含 HEAD 查询）权限。配置 CORS：Origin 为实际使用的 `http://127.0.0.1:5173` 与备案后的网站 HTTPS Origin，允许 PUT/GET/HEAD 和 Content-Type 头，可暴露 ETag。密钥只在服务器环境配置。暂未使用的上传对象需要按业务保留规则清理；当前不会自动删除用户文件。
+创建私有读写桶；受限子账号只授权对应桶 `uploads/*` 的上传和读取（包含 HEAD 查询）权限。当前 CORS 已保留 `http://127.0.0.1:5173` 并新增 `https://kongqi.xyz`，允许 PUT/GET/HEAD 与 Content-Type、Content-Length 头，暴露 ETag；两套预请求及正式浏览器图片/PDF 流程已验收。密钥只在服务器环境配置。暂未使用的上传对象需要按业务保留规则清理；当前不会自动删除用户文件。
 
 ## 极验 + 邮箱验证码登录
 
@@ -33,9 +37,9 @@
 
 ## 阿里云效 CI/CD + GitHub + 飞书
 
-在云效流水线创建 GitHub 源码连接和 webhook，监听目标分支 push；流水线步骤依次执行前端构建、后端构建、镜像构建推送至 ACR、通过部署主机/ACK 滚动更新，并配置健康检查与失败回滚。将数据库密码、JWT 密钥、COS/邮件凭证保存在云效凭据库或部署平台密钥管理中。
+当前原生链路：GitHub `main` push → 云效 Flow → Docker 构建环境中的后端/真实隔离 PostgreSQL 检查及前端构建 → Packages 通用制品仓库 → `blog-production` 主机组 Runner → 版本虚拟环境、迁移、健康检查与当前版本切换 → 飞书通知。服务器不运行生产 Docker，当前方案无需 ACR 或 ACK。将数据库密码、JWT 密钥、COS/邮件凭证保存在服务器受限环境文件或对应凭据管理中。
 
-仓库提供可执行构建、部署和飞书文本通知脚本及生产 compose，操作见 [云效接入步骤](deploy/YUNXIAO.md)。密钥存云效加密变量，成功/失败分支各配置一次通知。尚未在你的账号创建流水线或验证 GitHub webhook。
+第 11 次运行已由真实 `c2d4c75` 提交自动触发，构建、上传、生产部署和正确飞书群成功通知均已验收。源码 CDN 支持提交 `f62dc92` 的首次 Webhook 超时，经一次重投后云效接收成功；用户确认该次运行正在进行，服务器尚未看到此版本标记。具体操作见 [云效接入步骤](deploy/YUNXIAO.md)。部署脚本在健康检查失败时恢复上版代码和服务，数据库结构不自动降级；真实故障回滚及失败/取消通知仍未演练。
 
 ## 容器部署
 

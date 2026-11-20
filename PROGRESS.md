@@ -2,13 +2,87 @@
 
 ## 当前交接状态
 
+### 2026-11-20 恢复项目：CDN 应用准备与现状复核
+
+#### 最新补充：第 12 次发布、应用 CDN 切换和浏览器验收完成
+
+用户确认本次云效成功并收到飞书通知。独立核对第 12 次主机送达包 66,176 字节，接收器 --verify-only 确认完整提交 f62dc92dcee63d7368ba02757137deb2d0491e5b；current、版本标记、实际进程工作目录及版本虚拟环境匹配。vueblog/nginx/postgresql 均 active，数据库健康 UP，文章仍为两篇，极验/百度公开配置、OpenAPI/Swagger 正常，首页和引导 JS/CSS 与实际发布目录哈希一致。
+
+随后通过 configure_cdn.py --apply 再次遮罩接收同一 CDN 密钥，完整云端预检通过后原子更新 /etc/vueblog.env 并重启应用；健康及真实媒体签名 307 跳转检查通过，图片/PDF 均命中缓存且内容一致，无签名/错误/过期签名均被拒绝。用户再于正式网站刷新并确认图片和 PDF 都正常。密钥未写本地文件或提交 Git。当前已有 GitHub → 云效第 12 次 → 生产 f62dc92 → 飞书成功通知，以及正式应用 → 腾讯云 CDN 私有附件的闭环证据；主站证书续期问题独立待处理。
+
+用户随后更新目标为严格双前端 monorepo：frontend-web、frontend-admin（Element Plus 与动态 RBAC），异步 FastAPI/SQLAlchemy/asyncpg、Redis 验证码/限流/Token 黑名单、aiosmtplib，以及规范化 deploy/nginx、docker、scripts、cicd。该目标替代先前单前端和原生优先方案；现有已验证生产版本作为迁移基线，新实现须按最新范围重新验证后上线。
+
+#### 最新补充：云端 CDN 的内容、鉴权与缓存已真实通过
+
+用户提供 f62dc92 构建最新日志：阿里云 PyPI 镜像 URL 已生效，后端依赖仍在下载；3.1MB 包 39.0kB/s、psycopg-binary 4.2MB 为 24.6kB/s，18:36 继续下载 cryptography，暂未出现报错。已检查 Dockerfile，checks 阶段仅一次 pip install；没有取消或重复发起构建。
+
+为并行推进云端验收，创建忽略目录下的 .local/verify_cdn_cloud.py，复用当前已审阅的 app/cdn.py 纯签名函数和 configure_cdn_remote.py 的 public_assets/verify_delivery 函数；模块经 SSH 仅在内存中加载，允许旧应用版本下先独立检查云端。用户通过本机遮罩窗口输入 CDN 密钥；只经 SSH stdin 传输，未打印、保存或写入服务器环境。此只读模式没有占用部署锁、改配置或重启服务，不会阻止当前 Flow 发布。
+
+真实结果：PNG 12,488 字节、PDF 188,566 字节的有效签名下载成功，类型/大小/SHA-256 均与私有 COS 原始对象一致；COS 匿名请求被拒绝；两种对象重复下载的 X-Cache-Lookup 均为 Cache Hit；暖缓存后的无签名、错误签名、过期签名均为 403。核验使用 https://cdn.kongqi.xyz 的自然解析，没有强制节点 IP，也没有上传或删除对象。结果是所测资源和节点的直接证据，不代表所有节点或正式网页流程验收完成。应用仍走原 COS 跳转；下一步等待 f62dc92 发布，再执行正式配置工具的完整预检和应用切换，随后验证浏览器附件与对应飞书发布结果。
+
+#### 最新补充：鉴权参数确认、公共 CNAME 已生效
+
+用户确认 Type D、MD5、sign、t、十进制、300 秒、全部文件均一致并已保存；同时确认 f62dc92 已出现云效运行且仍在进行。随后通过服务器新一次公共 DNS 查询，cdn.kongqi.xyz 的 CNAME 已返回 cdn.kongqi.xyz.cdn.dnsv1.com；两项 TXT 仍匹配。重新观察同一预期版本标记，没有再次触发构建。应用 CDN 密钥尚未收集或写入，真实有效/无效/过期签名和缓存验收仍待完成。以下“NXDOMAIN”“尚未确认鉴权参数”等内容保留各次查询时点的历史，最新状态以本节为准。
+
+后续直接向 dns7.hichina.com、dns8.hichina.com 查询 cdn.kongqi.xyz 的 CNAME，两者均返回 AA 权威响应、rcode=0、cdn.kongqi.xyz.cdn.dnsv1.com、TTL=600。两次递归查询曾一正一负，结合权威结果可确认记录已经正确保存，递归缓存传播仍可能有延迟。另以实际节点 IP 连接并使用 cdn.kongqi.xyz 做 SNI，系统证书链和域名校验成功，证书至 2027-02-18 08:59:59 GMT；对一份现存公开附件发起不带签名的 Range GET，传输成功并返回 403，未输出对象路径或原 COS 签名。这不是有效签名或回源成功证据。
+
+本次三分钟只读版本观察结束时仍为 c2d4c75，未看到 f62dc92 的生产标记；观察超时不能判定云效失败或结束，未重启或重投流水线。再次检查可访问浏览器清单，云效目标标签停在阿里云登录页，未读取其他个人页面或密钥窗口，无法据此获得已登录运行日志。下一步需取得实际运行的当前步骤/日志或完成该标签页登录，再继续构建诊断；CDN 密钥须在遮罩窗口输入，待版本可用后验收。
+
+#### 最新补充：DNS 与 CDN、证书分属不同服务
+
+用户先后更正 DNS 服务商名称，随后询问哪种组合更好。新一次通过服务器查询公共 DNS：kongqi.xyz 的 NS 仍为 dns7.hichina.com、dns8.hichina.com，对应阿里云；_cdnauth TXT 已存在，_dnsauth.cdn TXT 与本次腾讯云证书验证值匹配；cdn.kongqi.xyz 的 CNAME 仍为 NXDOMAIN。因此建议保留现有阿里云 DNS，通过实际分配的 cdn.kongqi.xyz.cdn.dnsv1.com 接入腾讯云 CDN，COS 与 CDN 子域名证书继续用腾讯云；没有迁移 NS 或改动网站、邮箱解析。主站证书仍为 Certbot/Let's Encrypt，不能混记为腾讯云 CDN 证书。CDN-SETUP.md、TLS-CDN.md 已据此补服务分工、当前状态和 CNAME 填写位置；历史操作记录保留原时点证据。
+
+用户已明确反馈鉴权总开关开启，但尚未取得 Type D、MD5、sign/t、十进制、300 秒、全部文件的完整参数与真实访问证据。配置密钥尚未通过遮罩窗口收集；没有写入服务器 CDN 配置。
+
+在用户确认未见本次自动运行后，对 f62dc92 对应的失败 Webhook 只重投一次；GitHub 接受 202，新投递随后为 HTTP 200、0.94 秒，云效响应 successful=true。投递入口恢复不能替代构建或生产发布成功证据。只读观察窗口结束时服务器仍为 c2d4c75，未据此重复发起流水线。
+
+#### 当前关键未完成项：本次 push 的 Webhook 在 GitHub 端 10 秒超时
+
+通过现有仓库所有者身份调用 GitHub 官方只读 API，未记录令牌或 Webhook 地址：仓库 push Hook 处于 active，JSON 内容类型；对应 f62dc92dcee63d7368ba02757137deb2d0491e5b、refs/heads/main 的实际投递发生于 2026-11-20T09:42:49.077Z，GitHub 记录 status_code=500，耗时 10 秒。进一步核对确认 delivery status 为 timed out，response headers 与 payload 均为空；因此是未在 10 秒内取得云效响应，不能据此声称云效实际返回 HTTP 500 或某种业务错误。上次 c2d4c75 投递为 200。服务器独立检查仍运行 c2d4c75，实际工作目录与版本虚拟环境一致，制品目录仅有第 9～11 次，没有 f62dc92 版本目录。以上不能排除云效已创建但尚未发布的运行，尚未重放 Webhook 或手动重复运行；已请求用户查看云效该提交的运行状态，再决定是否重投。
+
+CDN 用户随后确认域名归属验证通过；实际截图已显示绿色校验。私有桶授权弹窗支持“指定路径”，已按官方 COS 资源格式指导 uploads/*、只读 GetObject/HeadObject/OptionsObject，授权后开启私有桶访问。用户正在添加向导的推荐配置阶段：节点缓存建议一天、浏览器图片/PDF 不缓存、缓存键保留参数（Type D 自动排除 sign/t）；文本压缩保持默认。用量封顶建议测试阶段采用累计流量、当天 24 点前、1GB，解封时间选“永不解封”，需核对用量后手动启用；实际保存和生效状态尚待确认。域名最终提交、HTTPS、URL 鉴权与 CNAME 仍未验收。
+
+用户确认 CDN 没有可选证书，已指导单独申请覆盖 cdn.kongqi.xyz 的腾讯云免费证书、手动 DNS 验证；其先前仅 kongqi.xyz 的阿里云个人测试证书审核失败，不能作为此次 CDN 的证书。用户提供 _dnsauth.cdn TXT 验证值，已核对阿里云根域下的填写方式；随后明确反馈证书“已签发”。此反馈证明证书申请完成，尚未证明 CDN 已部署该证书。下一步回 CDN 刷新已托管证书列表、选中新证书、保存并开启 HTTPS；完成向导后取得实际 CNAME，先配置 Type D 鉴权再切换资源域名解析。
+
+用户进一步确认“HTTPS 已保存，已看到 CNAME”，并提供实际分配值 cdn.kongqi.xyz.cdn.dnsv1.com。已指导先使 Type D/sign/t/十进制/300 秒/全部文件鉴权生效，再在阿里云添加主机记录 cdn、类型 CNAME、值为上述真实地址的记录。当前未收到 Type D 保存、CNAME 保存或生效确认。公网 TLS、有效/无效/过期签名、内容比对与缓存仍待实测。
+
+通过服务器对上述实际分配 CNAME 做公开 DNS 查询，已解析出节点 IPv4；在不修改公共 DNS 的前提下，连接该节点并使用 cdn.kongqi.xyz 作为 SNI，系统可信 CA 和主机名校验通过，实际证书有效期至 2027-02-18 08:59:59 GMT。公共 cdn.kongqi.xyz 的 CNAME 当时仍未匹配配置值。随后针对现存公开附件、只请求一个字节的未签名 GET 超时，未取得 HTTP 状态；不能把 TLS 成功视为附件鉴权或 CDN 缓存验收通过。等待用户确认 Type D 生效后再进行完整签名下载验收。
+
+主站续期的只读核对：Certbot 2.9.0，当前已安装插件只有 standalone、webroot；kongqi.xyz 的续期 authenticator 为 webroot，路径 /var/www/certbot，使用 Let's Encrypt 正式 ACME 服务。此次未修改续期配置或重签证书。结合先前 HTTP-01 403，后续需评估可自动操作 AliDNS 的 DNS-01 插件或认证/清理 hook；Certbot 官方说明单纯手动 DNS 无认证 hook 不能自动续期，不能把 CDN 证书已签发等同于主站续期已修复。
+
+用户随后提供实际页面提示：“下一代 CDN EdgeOne 3.0 欢迎您体验”，并同时存在“立即体验”“继续开通 CDN”按钮。已明确指导选择“继续开通 CDN”，确认这一步属于推广入口，尚无传统 CDN 停止该账号开通的证据；当前不切换 EdgeOne。CDN 计费页及开通结果仍待核对。
+
+用户再确认已进入域名管理，已指导添加 cdn.kongqi.xyz，选中国境外、静态加速、上海私有 COS、HTTPS 回源及私有回源授权，正在等待域名归属验证/源站/保存状态。
+
+用户提供 CDN 新增域名表单：已选中国境外、网页小文件、COS 源、HTTPS；页面要求为 kongqi.xyz 添加 _cdnauth TXT 并显示尚未验证。用户确认域名在阿里云管理。通过服务器访问阿里公共 DNS 的 HTTPS 查询，实际 NS 为 dns7.hichina.com/dns8.hichina.com，_cdnauth TXT 和 cdn CNAME 当时均为 NXDOMAIN。已给出“云解析 DNS → 公网权威解析 → kongqi.xyz → 解析设置 → 添加记录”入口和 TXT 填法，记录值要求从当前 CDN 表单复制，不能猜测。
+
+新增 configure_cdn.py 与 configure_cdn_remote.py：遮罩收集密钥、SSH stdin 传输；默认仅预检，--apply 才在云端预检通过后更新服务器环境。使用原生发布互斥锁；只读选择已公开图片/PDF，比对 COS/CDN 流式 SHA-256、大小、类型，重复下载后测试无签名/错误签名/过期签名；实际配置时核对应用媒体 307 的签名和缓存头，失败恢复原环境。新增四项工具检查通过（包含七种不安全响应场景、配置保留与恢复、四种错误媒体响应）；已将工具检查加入 Flow 构建，尚无真实 CDN 验收。没有收集 CDN 密钥或执行该工具的交互模式。
+
+用户恢复目标后确认腾讯云 CDN 尚未开通，需要操作指引。已给出控制台入口并请求当前页面状态；拟用 cdn.kongqi.xyz、中国境外、私有 COS 源站。域名、计费开通、DNS、证书与 CDN 云端配置均未执行或验收，主站备案继续暂缓。
+
+本次严格 SSH 只读复核：vueblog/nginx/postgresql 均 active，API health 为 UP，current 和 .current-release 均为 c2d4c75a596f57efaee9225dac99e9bbd3007f3b；主站证书有效期为 2026-11-17 至 2027-02-15（GMT），certbot.timer active。定时器运行不代表续期演练成功，先前 HTTP-01 403 的问题仍待处理。
+
+新增 backend/app/cdn.py，按腾讯云官方 Type D 协议签发十进制生成时间戳、sign/t 参数的 HTTPS 下载链接；新增 CDN_BASE_URL/CDN_AUTH_KEY 配置，默认均空，未启用时保留 COS 短时签名下载。CDN 配置不完整或格式错误时返回 503；仍要求附件 ready 且被现存公开文章引用，媒体 307 保持 private/no-store/no-referrer，上传继续使用 COS 签名 PUT。密钥不返回前端，repr 隐藏。
+
+本地 20 项检查通过，PostgreSQL 专属检查跳过 1 项；随后将当前检查源码通过 SSH 传到服务器临时目录，使用独立临时 PostgreSQL 16.15 集群执行迁移、结构与完整后端套件，20 项全部通过、零跳过。测试没有读取生产环境文件或连接生产业务数据库，临时源码和数据库在结束后清理。这仅验证本次应用逻辑，不能替代 CDN 有效/无效/过期签名、私有回源与缓存命中的真实验收。
+
+新增 deploy/CDN-SETUP.md，列出开通、域名、回源权限、Type D 300 秒、HTTPS、CNAME、启用顺序和回退步骤。11 个 CDN 相关文件已保存为 f62dc92dcee63d7368ba02757137deb2d0491e5b，并正常快进推送到 GitHub main，远程独立核对 SHA 一致；其他未提交记录保留。当前只证明源码已推送，尚未取得本次云效运行或生产发布成功证据；服务器 CDN 环境变量未修改。窗口清单未显示云效目标窗口，IAB 页面访问超时，未据此认定流水线状态。另根据更晚的用户反馈，正式网站图片与 PDF 上传、保存文章和打开附件在 11 月 19 日已验收成功；下方当时“等待正式浏览器测试”的记录已被该反馈更新。
+
 ### 2026-11-19 构建与制品仓库联调
+
+#### 第 11 次已验收 GitHub 提交自动发布与飞书成功通知
+
+用户确认云效代码提交触发与 GitHub 仓库 Webhook 均已保存后，将已准备的两个提交正常快进推送到 main，远程独立核对为 c2d4c75a596f57efaee9225dac99e9bbd3007f3b。真实云效第 11 次运行的触发信息明确为仓库向 main 提交代码，开始于 2026-11-19 02:10:24（Asia/Shanghai），运行成功，用时 2 分 36 秒，构建 1 分 47 秒、主机发布 48 秒，制品 blog-native:11，源码 c2d4c75a。未手动发起或重复运行该实例。
+
+通过严格 SSH 独立验收第 11 次实际送达归档：63872 字节，完整提交号匹配。服务器 current 目录名、.current-release、实际进程工作目录和版本虚拟环境均匹配新版本；应用、Nginx、PostgreSQL active，数据库健康 UP，文章接口保留两篇文章，百度 ID、极验配置、OpenAPI/Swagger 页面正常，公网首页和引导 JS/CSS 与实际发布目录字节哈希匹配。用户确认正确飞书群已收到生产部署成功通知，运行编号 11、提交号与本次发布一致。
+
+至此 GitHub push → 云效自动构建 → Packages 上传 → 主机发布 → 飞书成功通知已有真实闭环证据。失败/取消通知及真实故障回滚仍未演练；CDN 尚未接入，ICP备案按用户要求暂缓，不能将成功流水线等同于全部上线准备完成。
 
 #### 正式网站 COS 跨域规则待补
 
 已独立比较同一桶 uploads/verification/ 路径的匿名 OPTIONS 预请求（PUT，content-type/content-length）：http://127.0.0.1:5173 返回 200 且允许来源/方法/请求头匹配；https://kongqi.xyz 返回 403 AccessForbidden，没有 Access-Control-Allow-Origin。此前本机图片/PDF 验收不能证明线上直传可用。
 
-cos-cors.json 已补正式网站规则，COS-SETUP.md 给出两套准确表单值，要求保留现有规则并由桶管理员在控制台新增生产来源。当前只是源码示例和操作说明，未修改真实桶配置，正式来源预请求及浏览器实际上传仍待验收。预请求未使用密钥、未上传或删除对象。飞书原生插件空表单已由用户提供，已按实际字段指导生产任务成功/失败/取消通知、构建任务失败/取消通知；尚无保存或实际通知证据，不读取用户填写凭据期间的云效表单。
+cos-cors.json 已补正式网站规则，COS-SETUP.md 给出两套准确表单值，要求保留现有规则并由桶管理员在控制台新增生产来源。用户随后确认正式域名规则已保存；独立复测本机和正式网站两个 Origin 均返回 200，允许来源、PUT/GET/HEAD、请求头、ETag 暴露、600 秒缓存及 Vary 匹配。预请求未使用密钥、未上传或删除对象。正式浏览器图片/PDF 上传与打开仍待用户测试，不用预请求成功代替实际业务验收。飞书配置期间未读取其凭据，成功通知的后续验收见上节。
 
 #### 第 10 次流水线已完成真实发布并独立验收
 
