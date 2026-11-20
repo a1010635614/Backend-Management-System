@@ -111,6 +111,6 @@ python -m unittest discover -s deploy/tests -v
 
 生产配置保存在 `/opt/blog-fullstack/shared/runtime.env`，root 0600；代码位于 `releases/<完整提交号>`，`current` 为成功版本。`deploy/scripts/deploy.sh` 验证完整制品和源码 SHA，构建镜像、备份数据库、运行迁移、检查实际 HTML/资源哈希后记录版本；健康失败恢复上一套兼容的 Compose 应用，不自动降级数据库。它不替代首次原生数据库迁移、Nginx 切流和证书续期配置。
 
-云效构建/上传/主机发布/飞书配置见 [新流水线](deploy/cicd/README.md)。生产主机需要 Compose，但 Flow 构建仅依赖 Docker build/run；ACR 并非这个通用制品方案的必需项。首次迁移、接收器升级、完整回滚、备份恢复与新版端到端发布仍待验收，详见 [MONOREPO-MIGRATION.md](MONOREPO-MIGRATION.md)。
+云效构建/上传/主机发布/飞书配置见 [新流水线](deploy/cicd/README.md)，首次停写、复制旧数据及切流见 [首次迁移](deploy/cicd/FIRST-CUTOVER.md)，数据库恢复演练和定时任务见 [备份](deploy/cicd/BACKUP.md)。生产主机需要 Compose，但 Flow 构建仅依赖 Docker build/run；ACR 并非这个通用制品方案的必需项。控制器和隔离检查已完成，正式迁移、接收器升级、完整生产回滚及新版端到端发布仍待验收，详见 [MONOREPO-MIGRATION.md](MONOREPO-MIGRATION.md)。
 
 DNS 沿用阿里云，COS/CDN 和附件证书采用腾讯云；主站为 Let's Encrypt。主站 HTTP-01 续期曾因平台 403 失败，需要完成可自动续期的 DNS-01 验证。ICP备案按用户要求暂缓，不能用附件 CDN 验收替代这项准备。历史操作与证据保存在 [PROGRESS.md](PROGRESS.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。

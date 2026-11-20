@@ -1,0 +1,24 @@
+[Unit]
+Description=Blog PostgreSQL backup and isolated restore verification
+Requires=docker.service
+After=docker.service
+ConditionPathExists=/opt/blog-fullstack/current/deploy/scripts/backup.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/blog-fullstack
+ExecStart=/usr/bin/python3 /opt/blog-fullstack/current/deploy/scripts/backup.py --drill --retention-days 7
+TimeoutStartSec=15min
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/blog-fullstack/backups /opt/blog-fullstack/.deploy.lock /run/docker.sock
+
+[Install]
+WantedBy=multi-user.target

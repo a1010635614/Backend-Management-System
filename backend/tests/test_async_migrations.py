@@ -8,6 +8,9 @@ import sys
 import asyncpg
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'deploy/scripts'))
+from database_tools import PostgresClient
+
 
 async def test_upgrade_preserves_legacy_articles_users_and_attachments(isolated):
     url = os.getenv('UPGRADE_DATABASE_URL')
@@ -40,8 +43,12 @@ async def test_upgrade_preserves_legacy_articles_users_and_attachments(isolated)
         await connection.execute("INSERT INTO assets(id,key,filename,content_type,size,owner_id,state) VALUES('f7b273ca-25f4-47bf-b1b7-010781746c61','uploads/legacy.png','旧图片.png','image/png',12,$1,'ready')", user)
     finally:
         await connection.close()
+    client = PostgresClient([], 'blog_test', 'upgradecheck', bin_dir=os.environ['POSTGRES_BIN'],
+                            host='127.0.0.1', port=int(dsn.split(':')[-1].split('/')[0]))
+    legacy = await asyncio.to_thread(client.fingerprint, legacy_data=True)
     await migrate('upgrade', 'head')
     await migrate('check')
+    assert await asyncio.to_thread(client.fingerprint, legacy_data=True) == legacy
     connection = await asyncpg.connect(dsn)
     try:
         row = await connection.fetchrow('SELECT * FROM posts WHERE id=$1', post)

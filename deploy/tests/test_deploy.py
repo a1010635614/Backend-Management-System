@@ -94,6 +94,19 @@ class DeploymentTests(unittest.TestCase):
         with self.assertRaises(self.error):
             Deployment(self.base / 'other', self.envfile, 'blog-test-release', 18082, 18002, 'localhost')
 
+    def test_import_marker_is_bound_to_source_and_project_and_is_private(self):
+        from database_tools import write_json
+        marker = self.deployment.shared / 'database-import-verified.json'
+        marker.write_text('{}')
+        self.assertFalse(self.deployment.import_verified(self.commit))
+        value = {'format': 1, 'commit': self.commit, 'project': self.deployment.project,
+                 'source_schema': '0002', 'source_commit': 'b' * 40, 'archive_sha256': 'c' * 64}
+        write_json(marker, value)
+        self.assertTrue(self.deployment.import_verified(self.commit))
+        self.assertFalse(self.deployment.import_verified('d' * 40))
+        marker.chmod(0o640)
+        self.assertFalse(self.deployment.import_verified(self.commit))
+
 
 if __name__ == '__main__':
     unittest.main()

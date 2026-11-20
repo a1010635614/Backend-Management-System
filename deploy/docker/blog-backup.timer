@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily blog backup and restore verification
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=blog-backup.service
+
+[Install]
+WantedBy=timers.target

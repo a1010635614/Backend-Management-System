@@ -46,11 +46,16 @@ PY
 pg_started=true
 "${run_as[@]}" "$postgres_bin/createdb" -h 127.0.0.1 -p "$pg_port" -U blog_test blogtest
 "${run_as[@]}" "$postgres_bin/createdb" -h 127.0.0.1 -p "$pg_port" -U blog_test upgradecheck
+"${run_as[@]}" "$postgres_bin/createdb" -h 127.0.0.1 -p "$pg_port" -U blog_test backupsource
+"${run_as[@]}" "$postgres_bin/createdb" -h 127.0.0.1 -p "$pg_port" -U blog_test backuprestore
 "${run_as[@]}" "$redis_server" --bind 127.0.0.1 --port "$redis_port" --save '' --appendonly no \
   --maxmemory 64mb --maxmemory-policy noeviction --dir "$work" >"$work/redis.log" 2>&1 &
 redis_pid=$!
 export TEST_DATABASE_URL="postgresql+asyncpg://blog_test@127.0.0.1:$pg_port/blogtest"
 export UPGRADE_DATABASE_URL="postgresql+asyncpg://blog_test@127.0.0.1:$pg_port/upgradecheck"
+export BACKUP_DATABASE_URL="postgresql+asyncpg://blog_test@127.0.0.1:$pg_port/backupsource"
+export RESTORE_DATABASE_URL="postgresql+asyncpg://blog_test@127.0.0.1:$pg_port/backuprestore"
+export POSTGRES_BIN="$postgres_bin"
 export TEST_REDIS_URL="redis://127.0.0.1:$redis_port/15"
 export DATABASE_URL="$TEST_DATABASE_URL" REDIS_URL="$TEST_REDIS_URL" APP_ENV=test BLOG_TEST_ISOLATED=1
 export JWT_SECRET=test-only-isolated-signing-key-with-48-characters
