@@ -1,0 +1,8 @@
+# Retain hashed assets for browser tabs opened before the latest deployment.
+services:
+  frontend-web:
+    volumes:
+      - ${BLOG_SHARED_ROOT:?Set BLOG_SHARED_ROOT}/web-assets:/usr/share/nginx/html/assets:ro
+  frontend-admin:
+    volumes:
+      - ${BLOG_SHARED_ROOT:?Set BLOG_SHARED_ROOT}/admin-assets:/usr/share/nginx/html/assets:ro

@@ -1,0 +1,1 @@
+<template><section class="empty"><span class="eyebrow">404 / PAGE NOT FOUND</span><h1>这页纸，被风吹走了。</h1><p>链接可能已经变更，回首页看看新的故事吧。</p><RouterLink class="button" to="/">返回首页</RouterLink></section></template>

@@ -1,0 +1,1 @@
+<template><el-result icon="info" title="页面不存在" sub-title="地址可能已经更改，或你的角色没有此页面权限。"><template #extra><el-button type="primary" @click="$router.push('/')">返回工作台</el-button></template></el-result></template>

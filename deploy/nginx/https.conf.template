@@ -1,0 +1,40 @@
+# Render __DOMAIN__ and __GATEWAY_PORT__ before installing this host configuration.
+map $upstream_http_referrer_policy $blog_referrer_policy {
+    default $upstream_http_referrer_policy;
+    "" strict-origin-when-cross-origin;
+}
+limit_req_zone $binary_remote_addr zone=blog_api:10m rate=20r/s;
+server {
+    listen 80;
+    server_name __DOMAIN__;
+    location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
+}
+server {
+    listen 443 ssl http2;
+    server_name __DOMAIN__;
+    ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:blog_ssl:10m;
+    ssl_session_timeout 1d;
+    server_tokens off;
+    client_max_body_size 1m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy $blog_referrer_policy always;
+    add_header Strict-Transport-Security "max-age=15552000" always;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header Referrer-Policy;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_read_timeout 30s;
+    location /api/ {
+        limit_req zone=blog_api burst=40 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:__GATEWAY_PORT__;
+    }
+    location / { proxy_pass http://127.0.0.1:__GATEWAY_PORT__; }
+}

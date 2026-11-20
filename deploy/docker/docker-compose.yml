@@ -1,0 +1,199 @@
+name: blog-fullstack
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16.15-bookworm}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blog}
+      POSTGRES_USER: ${POSTGRES_USER:-blog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      TZ: UTC
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=30, -c, timezone=UTC]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [data]
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 128
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: blog-redis:${RELEASE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/redis.Dockerfile
+      args:
+        REDIS_IMAGE: ${REDIS_IMAGE:-public.ecr.aws/docker/library/redis:7.4.11-alpine}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    volumes: [redis-data:/data]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=4m"]
+    networks: [data]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 128m
+    pids_limit: 32
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: blog-backend:${RELEASE_TAG:-local}
+    build: &backend-build
+      context: ../..
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-public.ecr.aws/docker/library/python:3.12-slim-bookworm}
+        PYTHON_PACKAGE_INDEX: ${PYTHON_PACKAGE_INDEX:-https://pypi.org/simple}
+    command: [python, -m, alembic, upgrade, head]
+    environment: &backend-env
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:?Set asyncpg DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_EXP_MINUTES: ${JWT_EXP_MINUTES:-60}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173,http://127.0.0.1:5174}
+      AUTH_CAPTCHA_REQUIRED: ${AUTH_CAPTCHA_REQUIRED:-true}
+      GEETEST_ID: ${GEETEST_ID:-}
+      GEETEST_KEY: ${GEETEST_KEY:-}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-noreply@example.com}
+      COS_REGION: ${COS_REGION:-ap-shanghai}
+      COS_BUCKET: ${COS_BUCKET:-}
+      COS_SECRET_ID: ${COS_SECRET_ID:-}
+      COS_SECRET_KEY: ${COS_SECRET_KEY:-}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
+      CDN_AUTH_KEY: ${CDN_AUTH_KEY:-}
+      BAIDU_HM_ID: ${BAIDU_HM_ID:-}
+      TZ: UTC
+    networks: [data, edge]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    logging: *logging
+
+  backend:
+    image: blog-backend:${RELEASE_TAG:-local}
+    build: *backend-build
+    environment: *backend-env
+    ports: ["127.0.0.1:${BACKEND_PORT:-8000}:8000"]
+    networks: [data, edge]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 96
+    logging: *logging
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  frontend-web:
+    image: blog-web:${RELEASE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        FRONTEND: frontend-web
+    networks: [edge]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 32m
+    pids_limit: 16
+    logging: *logging
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  frontend-admin:
+    image: blog-admin:${RELEASE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        FRONTEND: frontend-admin
+    networks: [edge]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 32m
+    pids_limit: 16
+    logging: *logging
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    image: blog-gateway:${RELEASE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/gateway.Dockerfile
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8080}:8080"]
+    networks: [edge]
+    depends_on:
+      backend: {condition: service_started}
+      frontend-web: {condition: service_started}
+      frontend-admin: {condition: service_started}
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 32m
+    pids_limit: 16
+    logging: *logging
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+networks:
+  edge:
+  data:
+    internal: true
+volumes:
+  postgres-data:
+  redis-data:

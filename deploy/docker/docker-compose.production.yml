@@ -1,0 +1,7 @@
+services:
+  frontend-web:
+    build:
+      dockerfile: deploy/docker/frontend-prebuilt.Dockerfile
+  frontend-admin:
+    build:
+      dockerfile: deploy/docker/frontend-prebuilt.Dockerfile
