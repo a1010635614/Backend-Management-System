@@ -2,6 +2,14 @@
 
 此目录是新版 Compose 流水线。线上当前仍运行已验收的原生版本 `f62dc92`；先完成候选验收、数据迁移和主机接收器更新，再将新版合入 `main`。仅替换构建命令不能完成迁移。
 
+## 当前阶段：独立验证流水线
+
+用户已确认正式流水线 1456575 的提交触发只包含 main。另建 `blog-monorepo-validation` 空模板，复用现有 GitHub 服务连接和同一仓库；默认分支为 `codex/production-monorepo`，工作目录 `blog`。验证任务选择杭州、Linux/amd64、开启 Docker Daemon，执行下节的同一构建命令。
+
+验证流水线只运行构建/检查，不添加正式主机组、部署脚本或飞书通知。可选上传至私有 `blog-artifacts`，但制品名称使用 `blog-compose-validation`，版本 `${BUILD_NUMBER}`，路径 `artifacts/` 并保留目录。这样验证包不会被误当成既有 `blog-native` 正式包。
+
+检查该次 `git log -1` 的完整源码对应提交，成功末尾须包含 `Compose artifact ready for commit ... in artifacts/`，并核对格式 2 manifest。构建验证通过不代表正式发布成功；不要将此前原生运行编号或旧 `Native artifact ready` 记录用于新版验收。
+
 ## 构建任务
 
 代码源选择 GitHub `a1010635614/Backend-Management-System`，工作目录 `blog`，默认分支 `main`，开启提交触发。GitHub App 的私钥全文保存在云效证书库中，不放在源码或变量明文中。

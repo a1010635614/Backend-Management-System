@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import artifact
@@ -106,6 +106,16 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(self.deployment.import_verified('d' * 40))
         marker.chmod(0o640)
         self.assertFalse(self.deployment.import_verified(self.commit))
+
+    def test_runner_environment_cannot_override_runtime_credentials_or_docker_host(self):
+        release = self.deployment.releases / self.commit
+        with patch.dict(os.environ, {'DATABASE_URL': 'wrong-fixture', 'MAIL_PASSWORD': 'wrong-fixture',
+                                     'DOCKER_HOST': 'tcp://wrong-fixture:2375', 'GATEWAY_PORT': '9999'}):
+            command, env = self.deployment.compose_settings(release)
+        for name in ('DATABASE_URL', 'MAIL_PASSWORD', 'DOCKER_HOST'):
+            self.assertNotIn(name, env)
+        self.assertEqual(env['GATEWAY_PORT'], str(self.deployment.gateway_port))
+        self.assertIn(str(self.envfile), command)
 
 
 if __name__ == '__main__':

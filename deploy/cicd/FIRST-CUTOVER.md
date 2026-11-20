@@ -13,6 +13,23 @@
 
 ## 控制器流程
 
+生产配置准备工具为 `deploy/scripts/prepare_runtime.py`。默认运行只显示以下计划，不打开源配置：
+
+```bash
+python3 deploy/scripts/prepare_runtime.py
+```
+
+复制白名单为 `ADMIN_EMAILS`、`MAIL_HOST/PORT/USERNAME/PASSWORD/FROM`、`GEETEST_ID/KEY`、`COS_REGION/BUCKET/SECRET_ID/SECRET_KEY`、`CDN_BASE_URL/AUTH_KEY` 和 `BAIDU_HM_ID`。固定源 `/etc/vueblog.env`，固定目标 `/opt/blog-fullstack/shared/runtime.env`；只创建新文件、不覆盖已存在配置、不改源文件、不重启服务。新的数据库/Redis/JWT 密钥独立生成。
+
+取得对这份计划的明确授权后，使用已有包含 python-dotenv 的受控环境执行：
+
+```bash
+/opt/vueblog/venv/bin/python VERIFIED_SOURCE/deploy/scripts/prepare_runtime.py \
+  --apply --copy-production-integrations
+```
+
+该文件专供 Compose `--env-file` 使用：双引号转义及 `$$` 保留密码中的美元符号；已使用真实隔离 Compose 容器验证引号、反斜杠、空格和美元符号的实际环境值。不要将此文件作为 shell 脚本 source，也不要用它替换旧 systemd EnvironmentFile。生成后只核对权限和无值的准备收据，不输出配置正文。
+
 `deploy/scripts/native_cutover.py` 只针对已有原生实例：`vueblog.service`、peer 认证的 PostgreSQL `blog`、`/etc/nginx/sites-available/vueblog`。它不读取 `/etc/vueblog.env`。
 
 持有新部署锁及旧原生发布/备份锁后，按以下顺序执行：

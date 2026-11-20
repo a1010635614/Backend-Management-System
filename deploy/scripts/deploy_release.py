@@ -19,6 +19,15 @@ class DeployError(RuntimeError):
     pass
 
 
+# Runtime.env owns these values. A Flow Runner's ambient environment must not
+# accidentally redirect the database or replace an integration credential.
+RUNTIME_KEYS = '''APP_ENV POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL
+REDIS_PASSWORD REDIS_URL JWT_SECRET JWT_EXP_MINUTES ADMIN_EMAILS ALLOWED_HOSTS CORS_ORIGINS
+AUTH_CAPTCHA_REQUIRED GEETEST_ID GEETEST_KEY MAIL_HOST MAIL_PORT MAIL_USERNAME MAIL_PASSWORD
+MAIL_FROM COS_REGION COS_BUCKET COS_SECRET_ID COS_SECRET_KEY CDN_BASE_URL CDN_AUTH_KEY
+BAIDU_HM_ID DOCKER_HOST DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH'''.split()
+
+
 def protected_directory(path):
     path = Path(path).absolute()
     if path.resolve() != path or path.is_symlink() or path == Path('/'):
@@ -62,7 +71,8 @@ class Deployment:
                    '-f', str(release / 'deploy/docker/docker-compose.yml'),
                    '-f', str(release / 'deploy/docker/docker-compose.production.yml'),
                    '-f', str(release / 'deploy/docker/docker-compose.host.yml')]
-        environment = {**os.environ, 'RELEASE_TAG': release.name, 'BLOG_SHARED_ROOT': str(self.shared),
+        environment = {**{key: value for key, value in os.environ.items() if key not in RUNTIME_KEYS},
+                       'RELEASE_TAG': release.name, 'BLOG_SHARED_ROOT': str(self.shared),
                        'GATEWAY_PORT': str(self.gateway_port), 'BACKEND_PORT': str(self.backend_port),
                        'COMPOSE_PARALLEL_LIMIT': '1'}
         return command, environment
