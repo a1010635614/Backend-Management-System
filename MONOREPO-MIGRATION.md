@@ -103,3 +103,11 @@ Chrome 能看到已登录的 Flow 标签，但 Windows 浏览器工具无法可�
 为避免新格式误交旧接收器，另准备 `flow_host.py`：主机任务在首次切流后显式改用新 current 中的版本化 `receive.py`，校验云效完整代码源 SHA 和流水线/运行编号，提供只读 `--inspect`，不再调用原生 `/usr/local/sbin/vueblog-flow-deploy`。源码和说明已写入，尚未修改正式 Flow 主机步骤。
 
 该入口的 4 项本地检查通过，覆盖只读预检查不能发布、完整 SHA/分离参数、短号/编码值/来源歧义拒绝、路径标识符边界。它们尚未代替新主机步骤的真实 Flow 验收。用户从控制台返回 available 146MiB、memory full avg10=48.29/avg60=64.76；`control-stop.json` 不存在，后续 Docker 列表及服务状态尚未返回。已提供只针对独立演练进程树和项目标签的控制台停止命令，等待实际输出。
+
+### 旧机恢复完成，用户选择更换 2GiB 实例
+
+原本地演练 SSH 在约 2400 秒控制超时后结束，不代表远端已清理。此后一次受限停止连接成功：控制记录 `independent-containers-stopped`，匹配演练 driver 0 个、实际停止 6 个测试容器、未删除卷。随后原生 API HTTP 200，vueblog/Nginx/PostgreSQL 均 active。进一步只读复查：无该项目运行容器，MemAvailable 349456kB，memory full avg10=0.00/avg60=0.01，正式接口仍 200。专用日志显示第二版 Redis/后端/前台镜像构建有缓存命中但耗时异常；实际失败回退没有完成，不能记为通过。
+
+用户决定更换 2vCPU、2GiB 内存、40GB 系统盘的轻量服务器。新机公网 IP、厂商/地域及 SSH 信息尚待提供。旧机保留用于数据导出和恢复，后续真实容器验收转至新机；同机 `native_cutover.py` 不能直接套用于空的新主机。新增 `deploy/cicd/SERVER-REPLACEMENT.md` 记录跨主机停写、最终导出/摘要、生产必要配置授权、新机导入、DNS/旧流量和新 Runner 的待完成工作。没有迁移真实数据、复制生产凭据或修改域名解析。
+
+旧机恢复后只执行了轻量部署工具检查，候选均保持停止，没有再启动数据库集成或构建：**42 项 Linux 检查全部通过，0.502 秒、零跳过**，包含新 Flow 主机入口的 4 项。完整后端继续采用此前真实 PostgreSQL/Redis 的 30 项、25 个子场景通过证据。9a692900efb5f3aac2e8b8c8eab087d25153dcd6 已本地保存主机入口；GitHub 验证分支目前仍为已通过云效构建的 0883500，main 仍为旧生产 f62dc92。
