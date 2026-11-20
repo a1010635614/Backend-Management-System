@@ -13,6 +13,7 @@ from pydantic import BaseModel, EmailStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, String, Text, Integer, BigInteger, DateTime, Boolean, ForeignKey, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
+from app.cdn import signed_cdn_url
 
 class Settings(BaseSettings):
     model_config=SettingsConfigDict(env_file=".env",extra="ignore")
@@ -22,6 +23,8 @@ class Settings(BaseSettings):
     mail_host:str=""; mail_port:int=587; mail_username:str=""; mail_password:str=""; mail_from:str="noreply@example.com"
     geetest_id:str=""; geetest_key:str=""
     cos_secret_id:str=""; cos_secret_key:str=""; cos_region:str="ap-shanghai"; cos_bucket:str=""; cos_public_base_url:str=""
+    cdn_base_url:str=""
+    cdn_auth_key:str=Field(default="",repr=False)
 settings=Settings(); engine=create_engine(settings.database_url,pool_pre_ping=True); SessionLocal=sessionmaker(bind=engine,expire_on_commit=False); oauth=HTTPBearer(auto_error=False)
 class Base(DeclarativeBase): pass
 class User(Base):
@@ -207,7 +210,13 @@ def read_media(asset_id:str,db:Session=Depends(get_db)):
     marker='[[asset:'+asset.id+']]'
     if not db.scalar(select(Post.id).where(Post.content.contains(marker)).limit(1)):
         raise HTTPException(404,'附件尚未公开')
-    url=cos_client().get_presigned_url(Bucket=settings.cos_bucket,Key=asset.key,Method='GET',Expired=300)
+    if settings.cdn_base_url or settings.cdn_auth_key:
+        try:
+            url=signed_cdn_url(settings.cdn_base_url,asset.key,settings.cdn_auth_key)
+        except ValueError:
+            raise HTTPException(503,'CDN 下载配置无效') from None
+    else:
+        url=cos_client().get_presigned_url(Bucket=settings.cos_bucket,Key=asset.key,Method='GET',Expired=300)
     return RedirectResponse(url,status_code=307,headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'})
 @app.post("/api/analytics/events",status_code=202)
 def collect(body:TrackIn,db:Session=Depends(get_db)):

@@ -60,7 +60,7 @@ class ApiTests(unittest.TestCase):
 
     def test_cos_native_presign_and_swagger(self):
         admin=self.token('admin@example.com')
-        with patch.multiple(settings,cos_secret_id='test-id',cos_secret_key='test-key',cos_region='ap-shanghai',cos_bucket='test-1250000000',cos_public_base_url='https://media.example.com'):
+        with patch.multiple(settings,cos_secret_id='test-id',cos_secret_key='test-key',cos_region='ap-shanghai',cos_bucket='test-1250000000',cos_public_base_url='https://media.example.com',cdn_base_url='https://cdn.example.com',cdn_auth_key='ExampleKey123'):
             result=self.client.post('/api/uploads/presign',json={'filename':'../../a.png','contentType':'image/png','size':123},headers=admin)
         self.assertEqual(result.status_code,200,result.text)
         data=result.json();url=urlparse(data['uploadUrl']);query=parse_qs(url.query)
@@ -115,6 +115,53 @@ class ApiTests(unittest.TestCase):
         for size in (0,10*1024*1024+1):
             self.assertEqual(self.client.post('/api/uploads/presign',json={'filename':'x.png','contentType':'image/png','size':size},headers=admin).status_code,422)
         self.assertEqual(self.client.post('/api/uploads/presign',json={'filename':'x.svg','contentType':'image/svg+xml','size':10},headers=admin).status_code,400)
+
+    def test_cdn_download_keeps_publication_gate_and_private_redirect(self):
+        admin=self.token('admin@example.com')
+        with patch.multiple(settings,cos_secret_id='test-id',cos_secret_key='test-key',cos_bucket='test-1250000000'),patch('app.main.CosS3Client.head_object',return_value={'Content-Length':'123','Content-Type':'application/pdf'}):
+            started=self.client.post('/api/uploads/presign',json={'filename':'paper.pdf','contentType':'application/pdf','size':123},headers=admin)
+            self.assertEqual(started.status_code,200,started.text)
+            aid=started.json()['id']
+            self.assertEqual(self.client.post('/api/uploads/'+aid+'/complete',headers=admin).status_code,200)
+        with patch.multiple(settings,cdn_base_url='https://cdn.example.com',cdn_auth_key='ExampleKey123'),patch('app.main.cos_client') as cos:
+            # Ready alone is insufficient: no CDN link before publication.
+            self.assertEqual(self.client.get('/api/media/'+aid,follow_redirects=False).status_code,404)
+            created=self.client.post('/api/posts',json={'title':'paper','summary':'summary','content':'[[asset:'+aid+']]','category':'notes'},headers=admin)
+            self.assertEqual(created.status_code,201,created.text)
+            with patch('app.cdn.time.time',return_value=1700000000):
+                public=self.client.get('/api/media/'+aid,follow_redirects=False)
+            self.assertEqual(public.status_code,307)
+            target=urlparse(public.headers['location']); query=parse_qs(target.query)
+            self.assertEqual(target.hostname,'cdn.example.com')
+            self.assertEqual(target.path,'/'+started.json()['key'])
+            self.assertEqual(query['t'],['1700000000'])
+            self.assertEqual(len(query['sign'][0]),32)
+            self.assertNotIn('q-signature',query)
+            self.assertNotIn('ExampleKey123',public.headers['location'])
+            self.assertEqual(public.headers['cache-control'],'private, no-store')
+            self.assertEqual(public.headers['referrer-policy'],'no-referrer')
+            self.assertNotIn('ExampleKey123',self.client.get('/api/public/config').text)
+            self.assertEqual(self.client.delete('/api/posts/'+str(created.json()['id']),headers=admin).status_code,204)
+            self.assertEqual(self.client.get('/api/media/'+aid,follow_redirects=False).status_code,404)
+            cos.assert_not_called()
+
+    def test_partial_cdn_configuration_does_not_issue_unsigned_links(self):
+        from app.main import Asset,Post
+        import uuid
+        admin=self.token('admin@example.com')
+        with SessionLocal() as db:
+            owner=db.query(User).filter_by(email='admin@example.com').one()
+            aid=str(uuid.uuid4())
+            db.add(Asset(id=aid,key='uploads/1/file.png',filename='file.png',content_type='image/png',size=1,owner_id=owner.id,state='ready'))
+            db.add(Post(title='photo',summary='summary',content='[[asset:'+aid+']]'))
+            db.commit()
+        for base,key in [('https://cdn.example.com',''),('','ExampleKey123'),('http://cdn.example.com','ExampleKey123')]:
+            with self.subTest(base=base),patch.multiple(settings,cdn_base_url=base,cdn_auth_key=key),patch('app.main.cos_client') as cos:
+                response=self.client.get('/api/media/'+aid,follow_redirects=False)
+                self.assertEqual(response.status_code,503,response.text)
+                self.assertNotIn('ExampleKey123',response.text)
+                self.assertNotIn('location',response.headers)
+                cos.assert_not_called()
 
     def test_geetest_failure_blocks_smtp(self):
         import httpx

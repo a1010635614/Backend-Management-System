@@ -40,7 +40,8 @@ COPY backend/app ./app
 COPY backend/alembic.ini ./
 COPY backend/migrations ./migrations
 COPY backend/tests ./tests
-RUN bash /checks/test-flow-postgres.sh \
+RUN PYTHONPATH=/app:/checks python -m unittest discover -s /checks -p test_cdn_configuration.py -v \
+    && bash /checks/test-flow-postgres.sh \
     && mkdir /validation && touch /validation/backend-ok
 
 FROM ${NODE_BUILD_IMAGE} AS frontend
