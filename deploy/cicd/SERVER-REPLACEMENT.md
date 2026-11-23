@@ -1,6 +1,55 @@
 # 迁移至新轻量服务器
 
-用户已选择新实例：2vCPU、2GiB 内存、40GB 系统盘。建议原版 Ubuntu 24.04 LTS、x86_64/amd64 和公网 IPv4；新 IP、云厂商/地域和 SSH 连接信息尚待提供。此文是准备方案，**跨主机迁移尚未执行**。
+## 2026-11-24 最新状态：镜像迁移已由用户完成
+
+用户已通过镜像将旧站迁入新实例，并反馈已完成测试。新公网 IP 为 `121.40.113.185`，SSH 为 root/22；旧机 `101.37.147.237` 仍运行。以下是本次独立核对结果，不代表新版 Compose 已上线：
+
+| 项目 | 实际结果 |
+| --- | --- |
+| 主域名 | 公共 DNS 的 `kongqi.xyz` A 记录已是 `121.40.113.185`；NS 仍为阿里云 |
+| 附件域名 | CNAME 仍为 `cdn.kongqi.xyz.cdn.dnsv1.com`，继续使用腾讯云 CDN |
+| SSH 身份 | 用户在新机控制台提供 ED25519 指纹，与网络扫描的公钥一致后才加入项目 known_hosts；严格检查保持开启 |
+| 原生版本 | `f62dc92dcee63d7368ba02757137deb2d0491e5b`，vueblog/Nginx/PostgreSQL/Docker active |
+| 数据库 | schema `0002`，1 个用户、2 篇文章、6 个附件；本次仅查数量，未宣称新旧库逐行比较通过 |
+| HTTPS | 指定新 IP 并使用 `kongqi.xyz` 的 SNI/Host、默认 CA 校验，TLS 1.3 与 `/api/health` HTTP 200/UP 通过 |
+| 主站证书 | 仍为 Let's Encrypt，有效至 2027-02-15；公网 HTTP 80 返回 403，自动续期问题仍待解决 |
+| 资源 | x86_64，Python 3.12.3，OS 可见约 1.58GiB RAM；当次可用约 995MiB，memory PSI avg10/60/300 为 0，磁盘可用约 29GiB |
+| 容器 | 两个旧候选项目仍停止；新机独立候选恢复运行于回环 18083/18003 供浏览器验收，新生产 `/opt/blog-fullstack/.current-release` 不存在 |
+| 备份 | 原 `vueblog-backup.timer` active；新 `blog-backup.timer` 尚未安装/启用 |
+| Runner | 克隆身份已隔离；新机独立注册后 SSH 确认 active/enabled，用户已保存正式任务的新主机组；新 Compose 发布入口与真实链路待验收 |
+
+新机指纹：`SHA256:FTABfxG2uLFtFxUNIZyAVkvy2SFxt0K0ELIvzyGbFeE`（ED25519 公钥指纹，不是私钥）。已有部署客户端密钥可正常连接，无需重新提供密码。
+
+`deploy/remote.py` 与 `setup_ssh.py` 已改为默认连接新 IP；访问旧机必须显式选择 `ssh_arguments(host=LEGACY_HOST)`。旧机专用恢复辅助脚本继续固定到旧 IP。**本地 SSH 默认目标与 Flow 主机组是两套配置，改前者不等于已迁移云效发布。** 单元名称按组织命名，相同名称本身不能证明身份相同；本次用户安装日志明确出现旧 `config.yml` 被复用、`update runner`，因此不能把服务 running 当成独立新节点注册成功。
+
+已仅在新机停止并禁用克隆服务，将 Runner 安装目录、该组织数据和服务文件移入 `/root/yunxiao/disabled-clone-20261123T213458Z`（root 0700）留存；没有读取凭据内容或删除文件，旧机未改动。原站健康和三个原生服务复核通过。依据[官方镜像接入说明](https://help.aliyun.com/zh/yunxiao/user-guide/pipeline-runner/)，应从云效 `blog-production-new` 获取新有效接入命令，以 root 重新安装并注册，不复用复制来的配置。用户曾粘贴含注册凭据的安装日志，凭据未写入本文；已提醒重新生成/重置并避免继续发送完整日志。初次 admin 安装的 `permission denied /root/yunxiao` 则属于用户权限不足，官方要求 Linux 下使用 root。
+
+后续用户日志明确显示配置重新生成、`POST /api/v2/runner/register` 与 register success；新 Runner ID 与旧 ID 不同。SSH 复核新机 Runner active/enabled。用户已按“正式流水线 → 生产部署 → 仅包含新 IP 的主机组 → 仅保存”完成保存。Windows 浏览器工具无法可靠识别当前 URL，保护机制阻止操作，本次未通过自动 UI 读取保存结果；保存依据为用户反馈，尚未触发新部署。新机旧原生接收器 root 0755，其 SHA-256 与本地已审阅脚本一致，仍需在 Compose 首次切流后切换发布入口。
+
+## 新机独立真实回退演练已通过
+
+测试目录 `/opt/vueblog/verification/compose-release-newhost-20261124`，Compose 项目 `blog-release-newhost-20261124`，仅回环 18083/18003。SMTP/极验/COS/CDN/百度配置留空，PG/Redis/JWT 仅使用独立随机测试值，不读取正式环境。
+
+顺序预构建 `0883500` 与 `a99c511` 的全部应用镜像后，再部署第一版并写入合成文章；Redis 写入测试键并重启，确认持久化成功。对第二版执行真实迁移/启动/健康后注入预期故障，发布器自动恢复第一版。实际运行镜像与成功版本标记均回到完整 `088350014757a9da46ca295b9aa3d69b2fec24ac`，逐表摘要一致；双前端 HTML/资源、History、匿名权限及 OpenAPI 检查通过。
+
+结束后 7 个测试容器（含一次性 migrate）均 exited，测试卷保留；正式版本仍为 `f62dc92`、schema 0002、用户 1/文章 2/附件 6，原生健康 HTTP 200/UP。采样 memory full avg10=0，结束可用内存约 950MiB。该结果补足此前未完成的容器应用失败回退证据，仍不等于正式停写/导入切流、新版浏览器或第三方服务验收完成。
+
+随后仅恢复该独立候选供浏览器验收，没有重建镜像；前后台与后端源码树和当前应用源码一致。预览经严格 SSH 隧道仅在本机 `http://127.0.0.1:18083/`、`/admin/` 可用，真实 PostgreSQL/Redis UP、两套 HTML/资源/History 检查通过。管理员测试码仅写入合成 Redis、遵守 300 秒 TTL，没有发送邮件或配置第三方密钥；用户浏览器结果尚待反馈。验收后须停止候选与隧道，不能把回退结束时“全停”当成此刻仍全停。
+
+## 当前继续顺序
+
+1. 保留旧实例与磁盘；先完成 Flow Runner/主机组交接，确认旧机不再接收正式发布。正式 main 暂不推送。
+2. 在新机用空第三方配置、随机独立数据库/Redis/JWT、回环端口补做 Compose 发布与失败回退；先顺序预构建两版，再启动候选，持续检查原生健康和资源压力。随后完成新版浏览器验收。
+3. 展示本机 `/etc/vueblog.env` → `/opt/blog-fullstack/shared/runtime.env` 的必要生产配置白名单与授权计划。此处是新机上的原生→Compose，不再实施原先计划的跨机密钥复制。候选始终不读生产密钥。
+4. 新机已经具备原生服务与旧库，可复用同机 `native_cutover.py`；先备份，冻结原生写入、导入空目标库、逐表比较，再升级 0003 并比对旧业务字段，经过 HTTPS/管理员/附件验收后切流。不能用空库初始化替代迁移。
+5. 配置新生产备份/恢复和主站 DNS-01 自动续期，再更新 Flow 的 Compose 接收入口，完成真实 GitHub→构建→Packages→新机→飞书验证。
+6. 观察 DNS 与旧流量，确认备份可恢复后再决定旧实例退役；本次未关闭或释放旧机。
+
+## 2026-11-20 原准备方案（历史记录）
+
+下列步骤写于用户完成镜像迁移之前，其中“新机为空、DNS 尚未切换、需要跨主机导出/配置传输”的前提已由上节最新事实取代，不能直接照旧执行。
+
+用户选择的新实例规格为 2vCPU、2GiB、40GB；当时新 IP、地域与 SSH 信息尚未提供。
 
 旧生产地址为 `101.37.147.237`，站点 `kongqi.xyz`，原生 PostgreSQL schema 0002，代码基线 `f62dc92`。新生产目录仍使用 `/opt/blog-fullstack`，但不能把新主机当成没有历史数据的新网站。
 

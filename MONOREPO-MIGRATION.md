@@ -4,6 +4,8 @@
 
 ## 已有生产基线
 
+2026-11-24 补充：用户已镜像迁移至 `121.40.113.185`。独立检查主域名 A 记录、新机可信 SSH/TLS、原生服务 active 与接口 UP；数据库仍为 0002（用户 1、文章 2、附件 6）。新机真实 Compose 发布失败回退、逐表合成数据保留和 Redis 重启持久化已通过。新 Runner 已独立注册并 active/enabled，用户确认正式任务的新主机组已保存，新版接收入口及真实发布仍未完成。DNS hook 与遮罩配置工具已安装、真实只读预检通过，但证书测试应用户要求暂停；旧手动 HTTP 测试已正常取消，证书及续期配置哈希不变。新版 Compose 尚未切流；本地 SSH 默认目标已更新，详见 [新机现状与接续顺序](deploy/cicd/SERVER-REPLACEMENT.md)。以下各次验证保留原时点，不据旧候选 healthy 推断当前仍在运行。
+
 - `kongqi.xyz`：Nginx + systemd + PostgreSQL 16.15；管理员极验/邮件登录、正式 COS 上传、百度统计、云效第 12 次发布与飞书通知已验收。
 - `cdn.kongqi.xyz`：腾讯云 CDN 私有回源、Type D/MD5/sign/t/十进制/300 秒；图片/PDF 内容一致、暖缓存鉴权及 Cache Hit 均通过。CDN 配置已启用，用户确认正式浏览器图片/PDF 正常。
 - DNS 为阿里云，CDN 和 CDN 证书为腾讯云。主站仍为 Let's Encrypt，HTTP-01 续期 403 尚待改为可验证的续期方案。

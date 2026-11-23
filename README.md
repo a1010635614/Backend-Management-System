@@ -113,6 +113,6 @@ python -m unittest discover -s deploy/tests -v
 
 云效构建/上传/主机发布/飞书配置见 [新流水线](deploy/cicd/README.md)，首次停写、复制旧数据及切流见 [首次迁移](deploy/cicd/FIRST-CUTOVER.md)，数据库恢复演练和定时任务见 [备份](deploy/cicd/BACKUP.md)。生产主机需要 Compose，但 Flow 构建仅依赖 Docker build/run；ACR 并非这个通用制品方案的必需项。控制器和隔离检查已完成，正式迁移、接收器升级、完整生产回滚及新版端到端发布仍待验收，详见 [MONOREPO-MIGRATION.md](MONOREPO-MIGRATION.md)。
 
-用户已决定换成 2vCPU/2GiB/40GB 新轻量实例，按 [新服务器迁移](deploy/cicd/SERVER-REPLACEMENT.md) 保留旧数据并完成跨主机切流，不能在新机用空库初始化替代旧站迁移。
+2026-11-24 用户已通过镜像把原生站点迁至新机 `121.40.113.185`；公共 A 记录、严格 SSH 身份校验和新机 HTTPS 健康已核对。当前仍为原生 `f62dc92` / schema 0002，新版 Compose 未切流。新机独立真实应用失败回退、Redis 重启持久化及数据保留演练已通过。新 Runner 已独立注册并 active/enabled，用户已保存正式任务的新主机组；新版发布入口与真实 CI/CD 仍待验收。本地部署工具已默认连接新 IP。当前步骤见 [新服务器迁移](deploy/cicd/SERVER-REPLACEMENT.md)，不能在新机用空库初始化替代旧站数据迁移。
 
-DNS 沿用阿里云，COS/CDN 和附件证书采用腾讯云；主站为 Let's Encrypt。主站 HTTP-01 续期曾因平台 403 失败，需要完成可自动续期的 DNS-01 验证。ICP备案按用户要求暂缓，不能用附件 CDN 验收替代这项准备。历史操作与证据保存在 [PROGRESS.md](PROGRESS.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。
+DNS 沿用阿里云，COS/CDN 和附件证书采用腾讯云；主站为 Let's Encrypt。HTTP-01 续期曾因平台 403 失败；DNS-01 hook、遮罩安装工具与真实只读权限预检已完成，尚未通过实际 DNS 写入/ACME 验收。用户要求暂停证书申请后，已取消占锁的手动 HTTP 测试，保留现有有效证书和续期配置，详见 [证书续期状态](deploy/cicd/TLS-RENEWAL.md)。ICP备案按用户要求暂缓，不能用附件 CDN 验收替代这项准备。历史操作与证据保存在 [PROGRESS.md](PROGRESS.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。

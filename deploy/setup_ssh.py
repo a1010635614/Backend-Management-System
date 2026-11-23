@@ -5,13 +5,14 @@ import hashlib
 import os
 import subprocess
 import sys
+from remote import PRODUCTION_HOST
 
 ROOT=Path(__file__).resolve().parents[1]
 STATE=ROOT/".local"/"ssh"
 KEY=STATE/"blog_deploy_ed25519"
 KNOWN=STATE/"known_hosts"
 KNOWN_OPTION=f'UserKnownHostsFile="{KNOWN.as_posix()}"'
-HOST="root@101.37.147.237"
+HOST=f"root@{PRODUCTION_HOST}"
 
 def run():
     if "--check" in sys.argv or "--verify-host" in sys.argv:
