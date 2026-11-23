@@ -9,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import artifact
 import receive
+import verify_flow
 
 
 class ReceiveTests(unittest.TestCase):
@@ -46,6 +47,15 @@ class ReceiveTests(unittest.TestCase):
         self.pack()
         with patch.object(receive.subprocess, 'run') as run, self.assertRaises(artifact.ArtifactError):
             receive.receive(self.outer, self.commit, root=self.root / 'not-migrated')
+        run.assert_not_called()
+
+    def test_flow_validation_entry_verifies_a_real_archive_without_reaching_deployment(self):
+        self.pack()
+        values={'archive':str(self.outer),'commit':self.commit,'pipeline':'fixture','build_number':'1'}
+        with patch.object(verify_flow,'context',return_value=values), patch.object(receive.subprocess,'run') as run:
+            result=verify_flow.run({})
+        self.assertTrue(result['verified'])
+        self.assertEqual(result['commit'],self.commit)
         run.assert_not_called()
 
     def test_traversal_extra_files_and_links_cannot_reach_execution(self):

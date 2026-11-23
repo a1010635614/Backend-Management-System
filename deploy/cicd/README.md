@@ -6,9 +6,25 @@
 
 用户已确认正式流水线 1456575 的提交触发只包含 main。另建 `blog-monorepo-validation` 空模板，复用现有 GitHub 服务连接和同一仓库；默认分支为 `codex/production-monorepo`，工作目录 `blog`。验证任务选择杭州、Linux/amd64、开启 Docker Daemon，执行下节的同一构建命令。
 
-验证流水线只运行构建/检查，不添加正式主机组、部署脚本或飞书通知。可选上传至私有 `blog-artifacts`，但制品名称使用 `blog-compose-validation`，版本 `${BUILD_NUMBER}`，路径 `artifacts/` 并保留目录。这样验证包不会被误当成既有 `blog-native` 正式包。
+验证流水线首先只运行构建/检查，不添加应用部署脚本或飞书通知。接入新机后，为取得这次实际 CI 构建的制品，按下节增加上传与只校验任务；后者只解包、校验源码绑定，不读取生产配置或切换应用。
 
 检查该次 `git log -1` 的完整源码对应提交，成功末尾须包含 `Compose artifact ready for commit ... in artifacts/`，并核对格式 2 manifest。构建验证通过不代表正式发布成功；不要将此前原生运行编号或旧 `Native artifact ready` 记录用于新版验收。
+
+### 独立验证制品上传与新机校验
+
+1. 在独立流水线已有构建任务中，将“构建物上传”放在执行命令之后：私有通用仓库 `blog-artifacts`、制品名称 `blog-compose-validation`、版本 `${BUILD_NUMBER}`、打包路径 `artifacts/`，勾选“制品中包含打包路径的目录”。独立名称避免与正式流水线同号运行的制品冲突。
+2. 在后续阶段添加名为“制品校验”的“主机部署”任务，仅用它下载和校验文件。主机组必须只含新机 `121.40.113.185`；制品来源选择本次上游上传的 `blog-compose-validation`，不要选择旧版本或正式 `blog-native` 包。
+3. 下载路径填写 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，执行用户 `root`，取消“变量进行编码”。这里的文件名用于兼容元数据解析，不调用原生发布器。
+4. 先运行本机 `python deploy/install_flow_verifier.py`，将四个审阅过的公开校验脚本安装到新机 `/usr/local/lib/blog-flow-validation/`；安装器拒绝覆盖不同内容。然后任务脚本仅填写：
+
+   ```bash
+   set -euo pipefail
+   /usr/bin/python3 /usr/local/lib/blog-flow-validation/verify_flow.py
+   ```
+
+5. 保存后运行验证分支的最新完整提交。保留构建完成标记，以及该任务输出的 `verified: true`、`format: 2`、匹配的完整提交和下载路径。后续首次切流使用这个真实 CI 制品；本步骤本身没有应用发布、数据库导入、Nginx 切流或通知。
+
+`verify_flow.py` 固定以 `verify_only=True` 调用接收器，不接受部署开关。它使用与正式入口一致的完整提交、流水线/运行编号检查及归档校验。截止 2026-11-24，新机已安装并核对四个文件哈希，元数据自检通过，原生三个服务仍 active；新增的云效步骤及最新完整构建仍待实际执行，不能将安装自检作为云效制品验收。上传目录选项及主机下载步骤可对照官方[制品上传](https://help.aliyun.com/zh/yunxiao/user-guide/upload-general-product-warehouse)和[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)说明。
 
 ## 构建任务
 
