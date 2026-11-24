@@ -1,6 +1,6 @@
 # 云效 Flow：双前端与异步后端
 
-此目录是新版 Compose 流水线。线上当前仍运行已验收的原生版本 `f62dc92`；先完成候选验收、数据迁移和主机接收器更新，再将新版合入 `main`。仅替换构建命令不能完成迁移。
+此目录是新版 Compose 流水线。2026-11-24 已从原生 `f62dc92` 完成首次正式迁移，首次切流版本为 `63dba62` / schema 0003，独立验证流水线 `1456871` 第 3 次成功。用户已确认正式 `1456575` 的下述构建、上传及主机入口三项仅保存；接着合入 `main` 验证自动发布，不能将独立流水线的成功当作正式 main/飞书链路已验收。实际运行版本以主机 `.current-release` 及该次流水线记录为准。
 
 ## 当前阶段：独立验证流水线
 
@@ -12,19 +12,25 @@
 
 ### 独立验证制品上传与新机校验
 
+画布中的白色块是任务，修改名称不会改变任务类型。构建任务（例如“构建验证”）内依次放“执行命令”和“构建物上传”；后续任务“制品校验”使用“主机部署”类型。两个构建任务的工作目录不会因为前后相连就自动共享，因此不要把上传单独放在另一个只下载源码的构建任务中。已有后续任务时先点开：出现“下载路径、执行用户、部署脚本”即可复用；若出现“构建环境、执行命令”，它仍是构建任务，需要另建后续主机任务。不要把新机校验命令填到云端构建容器中，也不要添加为与构建并行的任务。
+
+官方对任务内步骤共享工作空间的定义见 [YAML 初步体验](https://help.aliyun.com/zh/yunxiao/user-guide/yaml-preliminary-experience/)，构建后先上传、再供后续部署任务下载的说明见 [构建物管理常见问题](https://help.aliyun.com/zh/yunxiao/user-guide/issues-in-building)。本项目采用相同任务内构建/上传、跨任务经 Packages 传递制品的安排。
+
 1. 在独立流水线已有构建任务中，将“构建物上传”放在执行命令之后：私有通用仓库 `blog-artifacts`、制品名称 `blog-compose-validation`、版本 `${BUILD_NUMBER}`、打包路径 `artifacts/`，勾选“制品中包含打包路径的目录”。独立名称避免与正式流水线同号运行的制品冲突。
 2. 在后续阶段添加名为“制品校验”的“主机部署”任务，仅用它下载和校验文件。主机组必须只含新机 `121.40.113.185`；制品来源选择本次上游上传的 `blog-compose-validation`，不要选择旧版本或正式 `blog-native` 包。
 3. 下载路径填写 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，执行用户 `root`，取消“变量进行编码”。这里的文件名用于兼容元数据解析，不调用原生发布器。
 4. 先运行本机 `python deploy/install_flow_verifier.py`，将四个审阅过的公开校验脚本安装到新机 `/usr/local/lib/blog-flow-validation/`；安装器拒绝覆盖不同内容。然后任务脚本仅填写：
 
-   ```bash
-   set -euo pipefail
+   ```sh
+   set -eu
    /usr/bin/python3 /usr/local/lib/blog-flow-validation/verify_flow.py
    ```
 
 5. 保存后运行验证分支的最新完整提交。保留构建完成标记，以及该任务输出的 `verified: true`、`format: 2`、匹配的完整提交和下载路径。后续首次切流使用这个真实 CI 制品；本步骤本身没有应用发布、数据库导入、Nginx 切流或通知。
 
-`verify_flow.py` 固定以 `verify_only=True` 调用接收器，不接受部署开关。它使用与正式入口一致的完整提交、流水线/运行编号检查及归档校验。截止 2026-11-24，新机已安装并核对四个文件哈希，元数据自检通过，原生三个服务仍 active；新增的云效步骤及最新完整构建仍待实际执行，不能将安装自检作为云效制品验收。上传目录选项及主机下载步骤可对照官方[制品上传](https://help.aliyun.com/zh/yunxiao/user-guide/upload-general-product-warehouse)和[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)说明。
+`verify_flow.py` 固定以 `verify_only=True` 调用接收器，不接受部署开关。它使用与正式入口一致的完整提交、流水线/运行编号检查及归档校验。2026-11-24，独立流水线 `1456871` 第 2 次的实际 `63dba62` 格式 2 包已下载到新机并独立校验通过；Flow 主机脚本先前因 `/bin/sh` 不支持 `pipefail` 而失败。兼容写法已在同主机、同包上真实通过，仍需修改云效配置并发起新运行取得整条流水线成功证据。上传目录选项及主机下载步骤可对照官方[制品上传](https://help.aliyun.com/zh/yunxiao/user-guide/upload-general-product-warehouse)和[主机部署](https://help.aliyun.com/zh/yunxiao/user-guide/host-deployment-1)说明。
+
+主机任务实际使用 `/bin/sh`，上述两行脚本没有管道，使用 POSIX `set -eu` 即可。不要在这里填写 Bash 专用的 `set -euo pipefail`；云端“执行命令”构建步骤的 Bash 设置保留不变。
 
 ## 构建任务
 
@@ -60,16 +66,16 @@ bash deploy/cicd/build.sh
 
 主机组沿用 `blog-production`。主机需要真实 Docker/Compose，不能复用 Flow 的受限 Docker 服务。公网只开放 Nginx 80/443；PostgreSQL/Redis 不映射端口，候选和生产容器网关均只绑定回环。
 
-首次切流完成后，主机任务改用新 `current` 内的版本化接收器，不再调用旧 `/usr/local/sbin/vueblog-flow-deploy`。保持下载路径 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，取消“变量进行编码”。先用 `--inspect` 核对本次完整代码源 SHA、流水线/运行编号和下载路径，再启用实际发布。
+首次切流已完成，正式主机任务应改用新 `current` 内的版本化接收器，不再调用旧 `/usr/local/sbin/vueblog-flow-deploy`。保持下载路径 `/opt/vueblog/flow/${PIPELINE_ID}/${BUILD_NUMBER}/blog-native.tgz`，取消“变量进行编码”，主机组仅含新 IP `121.40.113.185`。保留现有飞书插件，配置阶段先“仅保存”，主分支源码更新后再由提交触发。
 
-```bash
-set -euo pipefail
-python3 /opt/blog-fullstack/current/deploy/scripts/flow_host.py
+```sh
+set -eu
+/usr/bin/python3 /opt/blog-fullstack/current/deploy/scripts/flow_host.py
 ```
 
 `flow_host.py` 从 `CI_COMMIT_SHA_1` 或单一代码源的 `CI_COMMIT_SHA` 获取完整提交；短提交号 `CI_COMMIT_ID`、编码值或两个来源不一致时停止。它只向同一已解析版本目录中的 `receive.py` 传递分离参数，接收器继续验证外层归档、格式 2 manifest、源码 SHA 和已完成切流的 gate；实际发布仍持有部署锁。官方变量范围和编码注意事项见 [环境变量](https://help.aliyun.com/zh/yunxiao/user-guide/environment-variables/) 与 [主机部署问题](https://help.aliyun.com/zh/yunxiao/user-guide/common-issues-in-host-deployment/)。
 
-新 `current` 尚未建立时不能提前使用此命令；旧主机步骤继续服务当前原生 main，待维护窗口完成后再替换。首次迁移必须先备份、停止旧写入、导入新库、执行 0003、核对数据及切流，不得用 `--initialize-empty` 代替。旧 native 维护脚本仅保留作历史恢复材料，不得再用于新数据库或新制品。
+当前 `current` 已建立、首次导入与流量 gate 均通过，可以配置上述接收入口。正式 Flow 的三项配置保存并核对前，先不推送 main。首次迁移已通过停写备份、导入、0003 升级、数据比较和切流；不能再次运行首次控制器或用 `--initialize-empty` 覆盖现有库。旧 native 工具仅保留作历史恢复材料。
 
 ## 环境变量
 

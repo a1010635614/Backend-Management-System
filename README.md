@@ -2,7 +2,7 @@
 
 Vue 3 双前端、异步 FastAPI 后端，以及 PostgreSQL、Redis、私有 COS 和 CDN。前台浏览 Markdown 文章，后台按角色管理草稿、发布内容、用户和访问统计。
 
-**迁移状态：** 当前工作分支正在实现新版 monorepo。上次正式验收的线上版本为 `f62dc92`，仍采用原生部署；新版 Compose 尚未接管正式流量。CDN 的正式图片/PDF 已由用户验收。完整进度和未完成项见 [迁移记录](MONOREPO-MIGRATION.md)，不能将旧版上线证据视为新版已发布。
+**首次上线验收基线（2026-11-24）：** 新机 `121.40.113.185` 已完成新版 Compose `63dba62` 的首次切流，数据库为 0003，六个服务健康。用户已验收正式极验/邮件登录、旧文章、新发布及图片/PDF 上传访问；每日备份及真实隔离恢复通过。正式流水线 `1456575` 的三项入口配置已由用户确认保存，下一次 main 自动发布待验收；主站续期按用户要求暂停。后续实际完整版本以 `/opt/blog-fullstack/.current-release` 与正式流水线最近成功记录为准。
 
 ## 技术与目录
 
@@ -111,8 +111,8 @@ python -m unittest discover -s deploy/tests -v
 
 生产配置保存在 `/opt/blog-fullstack/shared/runtime.env`，root 0600；代码位于 `releases/<完整提交号>`，`current` 为成功版本。`deploy/scripts/deploy.sh` 验证完整制品和源码 SHA，构建镜像、备份数据库、运行迁移、检查实际 HTML/资源哈希后记录版本；健康失败恢复上一套兼容的 Compose 应用，不自动降级数据库。它不替代首次原生数据库迁移、Nginx 切流和证书续期配置。
 
-云效构建/上传/主机发布/飞书配置见 [新流水线](deploy/cicd/README.md)，首次停写、复制旧数据及切流见 [首次迁移](deploy/cicd/FIRST-CUTOVER.md)，数据库恢复演练和定时任务见 [备份](deploy/cicd/BACKUP.md)。生产主机需要 Compose，但 Flow 构建仅依赖 Docker build/run；ACR 并非这个通用制品方案的必需项。控制器和隔离检查已完成，正式迁移、接收器升级、完整生产回滚及新版端到端发布仍待验收，详见 [MONOREPO-MIGRATION.md](MONOREPO-MIGRATION.md)。
+云效构建/上传/主机发布/飞书配置见 [新流水线](deploy/cicd/README.md)，首次停写、复制旧数据及切流见 [首次迁移](deploy/cicd/FIRST-CUTOVER.md)，数据库恢复演练和定时任务见 [备份](deploy/cicd/BACKUP.md)。生产主机需要 Compose，但 Flow 构建仅依赖 Docker build/run；ACR 并非这个通用制品方案的必需项。首次正式迁移和核心浏览器流程已验收，真实应用失败回退已在隔离环境通过；正式 Flow 配置切换、新版 main 自动发布/飞书和主站续期仍待验收。
 
-2026-11-24 用户已通过镜像把原生站点迁至新机 `121.40.113.185`；公共 A 记录、严格 SSH 身份校验和新机 HTTPS 健康已核对。当前仍为原生 `f62dc92` / schema 0002，新版 Compose 未切流。新机独立真实应用失败回退、Redis 重启持久化及数据保留演练已通过。新 Runner 已独立注册并 active/enabled，用户已保存正式任务的新主机组；新版发布入口与真实 CI/CD 仍待验收。本地部署工具已默认连接新 IP。当前步骤见 [新服务器迁移](deploy/cicd/SERVER-REPLACEMENT.md)，不能在新机用空库初始化替代旧站数据迁移。
+2026-11-24 用户先通过镜像把原生站迁至新机；随后在用户明确批准本次生产迁移后，控制器从 `f62dc92` / 0002 停写备份、导入空目标并升级 0003，核对旧数据后切流至 `63dba62`。冻结源为用户 1、文章 2、附件 6；新站后续发布和上传会增加数据，不能据这些历史计数判断当前总量。旧库与最终备份保留，原生应用已停止。新 Runner 已独立注册，验证流水线 `1456871` 第 3 次完整成功；正式 `1456575` 仍需更新构建及主机入口再触发 main。当前步骤见 [新服务器迁移](deploy/cicd/SERVER-REPLACEMENT.md)。
 
 DNS 沿用阿里云，COS/CDN 和附件证书采用腾讯云；主站为 Let's Encrypt。HTTP-01 续期曾因平台 403 失败；DNS-01 hook、遮罩安装工具与真实只读权限预检已完成，尚未通过实际 DNS 写入/ACME 验收。用户要求暂停证书申请后，已取消占锁的手动 HTTP 测试，保留现有有效证书和续期配置，详见 [证书续期状态](deploy/cicd/TLS-RENEWAL.md)。ICP备案按用户要求暂缓，不能用附件 CDN 验收替代这项准备。历史操作与证据保存在 [PROGRESS.md](PROGRESS.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。

@@ -16,7 +16,11 @@ const app = createApp(App), pinia = createPinia()
 app.use(pinia).use(router)
 const auth = useAuthStore(pinia)
 window.addEventListener('blog:unauthorized', () => auth.reset())
-router.afterEach(to => { document.title = `${String(to.meta.title || '日常与远方')} · 纸间`; track(to.path) })
+router.afterEach((to, _from, failure) => {
+  if (failure) return
+  document.title = `${String(to.meta.title || '日常与远方')} · 纸间`
+  track(to.path)
+})
 app.mount('#app')
 void auth.refresh()
 void router.isReady().then(() => { if(localStorage.getItem('analytics-consent')==='yes') void enableAnalytics() })

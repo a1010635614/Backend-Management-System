@@ -1,6 +1,6 @@
 # Compose 备份和恢复演练
 
-当前状态：脚本和 systemd 单元已准备，合成数据在真实 PostgreSQL 容器中恢复成功；新定时任务**尚未安装**。旧原生备份任务仍保留，不能在新备份验收前关闭。
+当前状态（2026-11-24）：新生产 0003 的真实备份已在无网络临时 PostgreSQL 中恢复，归档/元数据/恢复证明的摘要与 root 0600 权限核对通过，临时容器已清理。实际 `blog-backup.service` 的成功输出与同一次 journal InvocationID 的 `JOB_RESULT=done` 已匹配；新 `blog-backup.timer` 已 enabled/active。旧 `vueblog-backup.timer` 已停用，旧库和历史归档保留。
 
 ## 新生产发布后的备份
 
@@ -20,18 +20,23 @@ python3 /opt/blog-fullstack/current/deploy/scripts/backup.py --drill --retention
 
 ## 安装定时任务
 
-首次切流及上述真实新生产备份/恢复成功后，再安装：
+首次切流后，可先安装 service，执行一次真实备份/恢复验收，再启用 timer。本次已完成这些步骤，以下供复核和重建使用：
 
 ```bash
 install -m 644 /opt/blog-fullstack/current/deploy/docker/blog-backup.service /etc/systemd/system/blog-backup.service
+systemctl daemon-reload
+systemctl start --no-block blog-backup.service
+journalctl -u blog-backup.service --since today --no-pager
+# 确认本次 backup/restore passed、恢复证明和容器清理后再继续：
 install -m 644 /opt/blog-fullstack/current/deploy/docker/blog-backup.timer /etc/systemd/system/blog-backup.timer
 systemctl daemon-reload
 systemctl enable --now blog-backup.timer
 systemctl list-timers blog-backup.timer
-journalctl -u blog-backup.service --since today --no-pager
 ```
 
-任务按服务器时区每日 03:30 加最多 15 分钟随机延迟执行。894MiB 主机应在低负载时演练，避免与 CI/候选预览并行。首份 Compose 备份恢复通过且新 timer 生效后，才停用旧 `vueblog-backup.timer`，并保留历史归档。
+任务按服务器时区每日 03:30 加最多 15 分钟随机延迟执行。本机时区为 `Asia/Shanghai`；启用时观察到下一次为 2026-11-25 03:39:48 CST，以 `systemctl list-timers` 的实时结果为准。首份 Compose 备份恢复通过且新 timer 生效后，才停用旧 `vueblog-backup.timer`，并保留历史归档。新机实际验收时约 919MiB 内存可用、memory full avg10 为 0，未与候选构建并行。
+
+oneshot 完成后 `inactive/dead` 是正常状态；systemd 回收再加载 unit 对象时，启动时间和 InvocationID 字段也可能为空。不能只凭 `is-active` 判断成功或失败，应结合本次 journal 中 worker 的 `_SYSTEMD_INVOCATION_ID`、manager 同 ID 的 `JOB_RESULT=done`、`backup/restore: passed` 以及归档恢复证明。不要因观测字段为空就重复启动备份。
 
 ## 独立检查已有备份
 
