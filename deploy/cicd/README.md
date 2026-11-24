@@ -1,8 +1,8 @@
 # 云效 Flow：双前端与异步后端
 
-此目录是新版 Compose 流水线。2026-11-24 已从原生 `f62dc92` 完成首次正式迁移，首次切流版本为 `63dba62` / schema 0003，独立验证流水线 `1456871` 第 3 次成功。正式 `1456575` 保存下述三项配置后，第 13 次已由 main 提交 `73331b7` 自动触发并完成真实主机部署和公网资源校验；新版飞书送达仍待用户确认。实际运行版本以主机 `.current-release` 及该次流水线记录为准。
+此目录是新版Compose流水线。首次切流`63dba62`/0003及独立验证`1456871`第3次成功后，正式`1456575`第13/14次已由main自动发布并完成真实主机及公网校验。用户已确认新版第13次飞书通知，百度访问记录也已验收。第14次`67d9bbf`的生产依赖层命中缓存，主机阶段约57秒。实际运行版本以主机`.current-release`及对应Flow记录为准，完整交接见[项目验收](../../PROJECT-ACCEPTANCE.md)。
 
-## 当前阶段：独立验证流水线
+## 独立验证流水线（首次切流前的流程）
 
 用户已确认正式流水线 1456575 的提交触发只包含 main。另建 `blog-monorepo-validation` 空模板，复用现有 GitHub 服务连接和同一仓库；默认分支为 `codex/production-monorepo`，工作目录 `blog`。验证任务选择杭州、Linux/amd64、开启 Docker Daemon，执行下节的同一构建命令。
 
@@ -75,7 +75,7 @@ set -eu
 
 `flow_host.py` 从 `CI_COMMIT_SHA_1` 或单一代码源的 `CI_COMMIT_SHA` 获取完整提交；短提交号 `CI_COMMIT_ID`、编码值或两个来源不一致时停止。它只向同一已解析版本目录中的 `receive.py` 传递分离参数，接收器继续验证外层归档、格式 2 manifest、源码 SHA 和已完成切流的 gate；实际发布仍持有部署锁。官方变量范围和编码注意事项见 [环境变量](https://help.aliyun.com/zh/yunxiao/user-guide/environment-variables/) 与 [主机部署问题](https://help.aliyun.com/zh/yunxiao/user-guide/common-issues-in-host-deployment/)。
 
-当前 `current` 已建立、首次导入与流量 gate 均通过，可以配置上述接收入口。正式 Flow 的三项配置保存并核对前，先不推送 main。首次迁移已通过停写备份、导入、0003 升级、数据比较和切流；不能再次运行首次控制器或用 `--initialize-empty` 覆盖现有库。旧 native 工具仅保留作历史恢复材料。
+`current`、首次导入与流量gate已建立，上述入口已在正式main自动运行中通过。后续正常提交沿用该入口；不要再次运行首次控制器或用`--initialize-empty`覆盖现有库。旧native工具仅保留作历史恢复材料。
 
 ## 环境变量
 
@@ -93,7 +93,7 @@ set -eu
 
 沿用已经实际验收的飞书插件，选择成功、失败与取消状态，包含流水线编号、代码提交、环境及网站地址。`deploy/scripts/notify_feishu.sh <success|failure|cancelled>` 是可选替代；`--preview` 只展示消息，不能证明送达。
 
-新版第 13 次已经取得真实 GitHub 提交 → Flow → Packages → 主机 Compose → 正式网页的一致证据；飞书是否收到该次通知仍需用户确认。旧第 12 次通知只证明旧原生版本的送达。
+新版第13/14次已经取得真实GitHub提交→Flow→Packages→主机Compose→正式网页的一致证据；用户已确认第13次飞书通知编号和提交正确，不再引用旧第12次通知作为新版送达证明。
 
 ## 生产依赖下载与缓存
 

@@ -1,6 +1,6 @@
 # 主站 Let's Encrypt 自动续期准备
 
-当前主站和附件证书是两套配置：主站 `kongqi.xyz` 使用 Certbot/Let's Encrypt，附件 `cdn.kongqi.xyz` 使用腾讯云证书。已验收附件 HTTPS 不代表主站续期通过。此前主站 HTTP-01 演练收到平台 403；ICP备案仍按用户要求暂缓。
+当前主站和附件证书是两套配置：主站`kongqi.xyz`使用Certbot/Let's Encrypt，附件`cdn.kongqi.xyz`使用腾讯云证书。此前HTTP-01演练收到平台403；2026-11-24晚间只读复核时公网HTTP已返回301、HTTPS200和有效证书，但没有因此重新执行ACME或推断ICP备案状态。用户本轮再次明确“继续暂缓证书，先做其他收尾”，续期配置仍是webroot，新DNS-01验收继续暂缓。
 
 拟改为自动 DNS-01：创建 `_acme-challenge.kongqi.xyz` TXT，验证后仅删除本次创建的记录。它不需要通过主站 HTTP 路径。单纯手工添加 TXT 无法自动续期，必须有 DNS 插件或认证/清理 hook。[Certbot 官方说明](https://eff-certbot.readthedocs.io/en/stable/using.html#manual)
 
