@@ -113,6 +113,8 @@ python -m unittest discover -s deploy/tests -v
 
 云效构建/上传/主机发布/飞书配置见 [新流水线](deploy/cicd/README.md)，首次停写、复制旧数据及切流见 [首次迁移](deploy/cicd/FIRST-CUTOVER.md)，数据库恢复演练和定时任务见 [备份](deploy/cicd/BACKUP.md)。生产主机需要 Compose，但 Flow 构建仅依赖 Docker build/run；ACR 并非这个通用制品方案的必需项。首次正式迁移、核心浏览器流程、新版 main 自动发布、飞书送达及百度访问记录已验收，真实应用失败回退已在隔离环境通过；主站自动续期继续暂缓。
 
+第15次 `7159d67` 已完成正式部署核验。针对云端拉取海外基础镜像缓慢，三个官方镜像现已同步并校验至杭州私有 ACR；云效登录与来源替换见 [ACR 缓存配置](deploy/cicd/ACR-CACHE.md)。镜像同步结果与改源后的整条流水线及耗时分别验收。
+
 2026-11-24 用户先通过镜像把原生站迁至新机；随后在用户明确批准本次生产迁移后，控制器从 `f62dc92` / 0002 停写备份、导入空目标并升级 0003，核对旧数据后切流至 `63dba62`。冻结源为用户 1、文章 2、附件 6；新站后续发布和上传会增加数据，不能据这些历史计数判断当前总量。旧库与最终备份保留，原生应用已停止。新 Runner 已独立注册，验证流水线 `1456871` 第 3 次完整成功；正式 `1456575` 第 13 次已通过新版接收入口部署 main。当前步骤见 [新服务器迁移](deploy/cicd/SERVER-REPLACEMENT.md)。
 
 DNS 沿用阿里云，COS/CDN 和附件证书采用腾讯云；主站为 Let's Encrypt。HTTP-01 续期曾因平台 403 失败，2026-11-24晚间公网HTTP已恢复301，但没有因此重新申请证书或声称续期通过。DNS-01 hook、遮罩安装工具与真实只读权限预检已完成，尚未通过实际 DNS 写入/ACME 验收。用户再次要求暂缓证书后，继续保留现有有效证书和续期配置，详见 [证书续期状态](deploy/cicd/TLS-RENEWAL.md)。ICP备案按用户要求暂缓，不能用附件 CDN 或HTTP响应推断备案状态。历史操作与证据保存在 [PROGRESS.md](PROGRESS.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。

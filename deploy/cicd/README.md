@@ -52,6 +52,8 @@ bash deploy/cicd/build.sh
 
 `deploy/build-flow.sh` 保留为调用新脚本的兼容入口。新脚本只构建当前完整 Git 提交，拒绝修改过的受跟踪输入和已有 `artifacts/`；Docker 构建上下文来自 `git archive`，不会发送工作区 `.env` 或本机密钥。Python 安装使用完整哈希锁，两个前端使用 `npm ci`。
 
+上述为公共镜像来源。2026-11-24 三个基础镜像已同步并核验到杭州私有 ACR；配置同任务 Docker Login 后，可按 [ACR 缓存步骤](ACR-CACHE.md)改为加载 `deploy/cicd/acr-images.sh` 的摘要锁定引用。镜像同步完成与云效完整运行验收分别记录，不能据前者声称下载提速已验收。
+
 阶段顺序为部署工具检查 → 临时 PostgreSQL/Redis 迁移和异步接口检查 → 前台测试及构建 → 后台测试及构建 → format 2 制品打包。任一失败即停止，不上传、不发布。当前具体测试数量以该次日志为准。
 
 ## 构建物上传

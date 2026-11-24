@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir --require-hashes --index-url "$PYTHON_PACKAGE_IND
 COPY backend/ ./backend/
 COPY deploy/scripts/ ./deploy/scripts/
 COPY deploy/remote.py ./deploy/remote.py
+COPY deploy/sync_acr_images.py ./deploy/sync_acr_images.py
 COPY deploy/tests/ ./deploy/tests/
 RUN python3 -m unittest discover -s deploy/tests -v \
     && POSTGRES_BIN=/usr/lib/postgresql/16/bin bash deploy/scripts/test-backend.sh \

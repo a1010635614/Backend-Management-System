@@ -1,0 +1,31 @@
+{
+  "registry": "crpi-fdci37tiun8k5nzb.cn-hangzhou.personal.cr.aliyuncs.com",
+  "namespace": "kongqi-blog",
+  "scope": "CI development and testing base images",
+  "images": [
+    {
+      "name": "python",
+      "source": "index.docker.io/library/python@sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d",
+      "platform": "linux/amd64",
+      "digest": "sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d",
+      "destination": "crpi-fdci37tiun8k5nzb.cn-hangzhou.personal.cr.aliyuncs.com/kongqi-blog/base-python:3.12-slim-bookworm",
+      "config_digest": "sha256:f4a31709c79ea38eafccf1234211e87d36625b5f9752d3df28319b43b48c0f23"
+    },
+    {
+      "name": "node",
+      "source": "index.docker.io/library/node@sha256:d20a7b8b4184bf74fe77499b5460a3d69e582bc733d50287e40c3fe791764851",
+      "platform": "linux/amd64",
+      "digest": "sha256:d20a7b8b4184bf74fe77499b5460a3d69e582bc733d50287e40c3fe791764851",
+      "destination": "crpi-fdci37tiun8k5nzb.cn-hangzhou.personal.cr.aliyuncs.com/kongqi-blog/base-node:22-bookworm-slim",
+      "config_digest": "sha256:98e6ef9c5dee87d59cef96a25b0f01181723ebe990154dec2025f3ddcddb4f5f"
+    },
+    {
+      "name": "postgres",
+      "source": "index.docker.io/library/postgres@sha256:5983db9a9c6ad225a48a46cfe2e03e6680b1826662befd0465eb05b34cb1c64e",
+      "platform": "linux/amd64",
+      "digest": "sha256:5983db9a9c6ad225a48a46cfe2e03e6680b1826662befd0465eb05b34cb1c64e",
+      "destination": "crpi-fdci37tiun8k5nzb.cn-hangzhou.personal.cr.aliyuncs.com/kongqi-blog/base-postgres:16.15-bookworm",
+      "config_digest": "sha256:cadebe7c08430c896edac883fa92f8de2c36e330805e770fbee8a7eae13f144f"
+    }
+  ]
+}
