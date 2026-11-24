@@ -1,4 +1,12 @@
 services:
+  backend:
+    build:
+      args:
+        PYTHON_PACKAGE_INDEX: ${PYTHON_PACKAGE_INDEX:-https://mirrors.aliyun.com/pypi/simple/}
+  migrate:
+    build:
+      args:
+        PYTHON_PACKAGE_INDEX: ${PYTHON_PACKAGE_INDEX:-https://mirrors.aliyun.com/pypi/simple/}
   frontend-web:
     build:
       dockerfile: deploy/docker/frontend-prebuilt.Dockerfile

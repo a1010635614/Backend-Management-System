@@ -110,9 +110,10 @@ class DeploymentTests(unittest.TestCase):
     def test_runner_environment_cannot_override_runtime_credentials_or_docker_host(self):
         release = self.deployment.releases / self.commit
         with patch.dict(os.environ, {'DATABASE_URL': 'wrong-fixture', 'MAIL_PASSWORD': 'wrong-fixture',
-                                     'DOCKER_HOST': 'tcp://wrong-fixture:2375', 'GATEWAY_PORT': '9999'}):
+                                     'DOCKER_HOST': 'tcp://wrong-fixture:2375', 'GATEWAY_PORT': '9999',
+                                     'PYTHON_PACKAGE_INDEX': 'https://runner-fixture.invalid/simple/'}):
             command, env = self.deployment.compose_settings(release)
-        for name in ('DATABASE_URL', 'MAIL_PASSWORD', 'DOCKER_HOST'):
+        for name in ('DATABASE_URL', 'MAIL_PASSWORD', 'DOCKER_HOST', 'PYTHON_PACKAGE_INDEX'):
             self.assertNotIn(name, env)
         self.assertEqual(env['GATEWAY_PORT'], str(self.deployment.gateway_port))
         self.assertIn(str(self.envfile), command)

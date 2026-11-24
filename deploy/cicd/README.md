@@ -1,6 +1,6 @@
 # 云效 Flow：双前端与异步后端
 
-此目录是新版 Compose 流水线。2026-11-24 已从原生 `f62dc92` 完成首次正式迁移，首次切流版本为 `63dba62` / schema 0003，独立验证流水线 `1456871` 第 3 次成功。用户已确认正式 `1456575` 的下述构建、上传及主机入口三项仅保存；接着合入 `main` 验证自动发布，不能将独立流水线的成功当作正式 main/飞书链路已验收。实际运行版本以主机 `.current-release` 及该次流水线记录为准。
+此目录是新版 Compose 流水线。2026-11-24 已从原生 `f62dc92` 完成首次正式迁移，首次切流版本为 `63dba62` / schema 0003，独立验证流水线 `1456871` 第 3 次成功。正式 `1456575` 保存下述三项配置后，第 13 次已由 main 提交 `73331b7` 自动触发并完成真实主机部署和公网资源校验；新版飞书送达仍待用户确认。实际运行版本以主机 `.current-release` 及该次流水线记录为准。
 
 ## 当前阶段：独立验证流水线
 
@@ -93,4 +93,12 @@ set -eu
 
 沿用已经实际验收的飞书插件，选择成功、失败与取消状态，包含流水线编号、代码提交、环境及网站地址。`deploy/scripts/notify_feishu.sh <success|failure|cancelled>` 是可选替代；`--preview` 只展示消息，不能证明送达。
 
-新版尚需真实 GitHub 提交 → Flow → Packages → 主机 Compose → 正式网页 → 飞书验收。旧第 12 次成功记录只证明旧原生版本的链路。
+新版第 13 次已经取得真实 GitHub 提交 → Flow → Packages → 主机 Compose → 正式网页的一致证据；飞书是否收到该次通知仍需用户确认。旧第 12 次通知只证明旧原生版本的送达。
+
+## 生产依赖下载与缓存
+
+云效构建的 `PYTHON_PACKAGE_INDEX` 只作用于云端步骤，不会自动传到生产机。生产 Compose 覆盖文件为 backend/migrate 默认使用 `https://mirrors.aliyun.com/pypi/simple/`，与首次镜像预构建及上述云端命令保持一致。否则默认 PyPI 与镜像源这两个不同的构建参数会使依赖安装层无法复用，表现为生产部署再次逐个下载 wheel。
+
+主机发布器会移除 Runner 环境中的同名变量；需要更换源时，由管理员在主机 `shared/runtime.env` 设置公开的 HTTPS `PYTHON_PACKAGE_INDEX`。只改变构建源，不改变已锁定版本、`--require-hashes` 和 TLS 验证。基础镜像、锁文件和对应构建步骤未变且本机缓存仍在时，后续仅修改业务代码或文章前端的发布可以复用依赖层；不承诺所有部署都零下载。不要在日常流水线执行 `docker builder prune` 或加 `--no-cache`。
+
+Docker 对构建参数和层缓存失效的规则见[官方缓存说明](https://docs.docker.com/build/cache/invalidation/)，包摘要校验见 [pip 安全安装](https://pip.pypa.io/en/stable/topics/secure-installs/)。
